@@ -1,0 +1,13 @@
+<!doctype html><meta charset="utf-8"><title>Мой ChatGPT</title>
+<style>body{font-family:system-ui;margin:20px}#log{height:60vh;overflow:auto;border:1px solid #ccc;padding:8px}</style>
+<h1>Мой ChatGPT</h1>
+<div id="log"></div>
+<form id="f"><input id="i" style="width:70%"><button>Отправить</button></form>
+<script>
+const f=document.getElementById('f'),i=document.getElementById('i'),log=document.getElementById('log');
+const add=(p,t)=>{const d=document.createElement('div');d.textContent=p+': '+t;log.appendChild(d);log.scrollTop=log.scrollHeight;}
+f.onsubmit=async e=>{e.preventDefault();const m=i.value.trim();if(!m)return;add('Ты',m);i.value='';
+  try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:m})});
+      const j=await r.json();add('ИИ',j.reply||('Ошибка '+(j.error||r.status)));}
+  catch{add('ИИ','Сеть/сервер недоступен');}}
+</script>

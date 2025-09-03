@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+  web:
+    build: .
+    container_name: help-gpt
+    ports:
+      - "8080:8080"  # веб-чат будет доступен на http://<IP>:8080
+    environment:
+      OPENAI_API_KEY: "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"
+      MODEL: "gpt-4.1-mini"   # или другая доступная модель
+    restart: unless-stopped
+    volumes:
+      - appdata:/app
+
+volumes:
+  appdata:

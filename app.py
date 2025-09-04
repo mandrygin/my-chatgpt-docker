@@ -2,7 +2,6 @@ from flask import Flask, request, jsonify, send_from_directory
 import os, requests
 from datetime import datetime
 
-# ==== Конфиг ====
 API_KEY  = os.environ["OPENAI_API_KEY"]
 MODEL    = os.environ.get("MODEL", "deepseek/deepseek-chat")
 API_URL  = os.environ.get("OPENROUTER_URL",
@@ -27,14 +26,10 @@ def chat():
     if not msg:
         return jsonify({"error": "empty"}), 400
 
-    # ✅ Системный промпт с текущей датой как контекстом
-    now = datetime.now().strftime("%d.%m.%Y %H:%M")
-    system_prompt = (
-        f"Текущая дата и время: {now}. "
-        "Используй их только для рассуждений. "
-        "Не упоминай дату и время в ответе, если пользователь явно не спросил. "
-        "Отвечай кратко и понятно, можно использовать Markdown и LaTeX."
-    )
+    # проверка: если пользователь спрашивает про дату или время
+    if "время" in msg.lower() or "дата" in msg.lower():
+        now = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+        return jsonify({"reply": f"Сейчас {now} по системному времени сервера ⏰"})
 
     headers = {
         "Authorization": f"Bearer {API_KEY}",
@@ -44,10 +39,7 @@ def chat():
     }
     body = {
         "model": MODEL,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": msg},
-        ],
+        "messages": [{"role": "user", "content": msg}],
     }
 
     try:

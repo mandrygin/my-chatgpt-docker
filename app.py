@@ -1,24 +1,17 @@
 from flask import Flask, request, jsonify, send_from_directory
 import os, requests
+from datetime import datetime
 
-# ==== Конфиг из переменных окружения ====
-API_KEY  = os.environ["OPENAI_API_KEY"]                          # sk-or-...
-MODEL    = os.environ.get("MODEL", "deepseek/deepseek-chat")     # нужная модель
+# ==== Конфиг ====
+API_KEY  = os.environ["OPENAI_API_KEY"]
+MODEL    = os.environ.get("MODEL", "deepseek/deepseek-chat")
 API_URL  = os.environ.get("OPENROUTER_URL",
                            "https://openrouter.ai/api/v1/chat/completions")
 APP_URL  = os.environ.get("APP_URL", "http://localhost:8080")
 APP_NAME = os.environ.get("APP_NAME", "help-gpt")
 
-# Короткая системная инструкция: разрешены Markdown и LaTeX
-SYSTEM_PROMPT = os.environ.get(
-    "SYSTEM_PROMPT",
-    "Отвечай понятно и кратко. Разрешено использовать Markdown и LaTeX "
-    "(формулы: $...$, $$...$$, \\(...\\), \\[...\\])."
-)
-
 app = Flask(__name__, static_folder="static", static_url_path="")
 
-# ==== Маршруты ====
 @app.get("/")
 def index():
     return send_from_directory("static", "index.html")
@@ -34,6 +27,10 @@ def chat():
     if not msg:
         return jsonify({"error": "empty"}), 400
 
+    # добавляем в system-промпт сегодняшнюю дату
+    now = datetime.now().strftime("%d.%m.%Y %H:%M")
+    system_prompt = f"Сегодня {now}. Ты обязан использовать эту дату как текущую."
+
     headers = {
         "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json",
@@ -43,10 +40,9 @@ def chat():
     body = {
         "model": MODEL,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user",   "content": msg},
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": msg},
         ],
-        "temperature": 0.3
     }
 
     try:

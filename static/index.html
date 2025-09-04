@@ -1,90 +1,68 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-  <meta charset="UTF-8">
-  <title>Мой ChatGPT</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-  <style>
-    body { background: #f8f9fa; }
-    #chat-box {
-      height: 80vh;
-      overflow-y: auto;
-      padding: 15px;
-      background: #fff;
-      border-radius: 10px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
-    }
-    .msg-user {
-      text-align: right;
-      margin: 10px 0;
-    }
-    .msg-bot {
-      text-align: left;
-      margin: 10px 0;
-    }
-    .bubble {
-      display: inline-block;
-      padding: 10px 15px;
-      border-radius: 15px;
-      max-width: 70%;
-    }
-    .bubble-user {
-      background: #0d6efd;
-      color: white;
-    }
-    .bubble-bot {
-      background: #e9ecef;
-    }
-  </style>
-</head>
-<body class="container py-3">
-  <h3 class="mb-3">💬 Мой ChatGPT</h3>
-  <div id="chat-box"></div>
+<style>
+  body { background: #f0f2f5; font-family: Arial, sans-serif; }
+  #chat-box {
+    height: 80vh;
+    overflow-y: auto;
+    padding: 20px;
+    background: #fff;
+    border-radius: 15px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+  }
 
-  <div class="input-group mt-3">
-    <textarea id="msg" class="form-control" rows="2" placeholder="Введите сообщение..."></textarea>
-    <button id="send" class="btn btn-primary">Отправить</button>
-  </div>
+  .msg-user, .msg-bot { margin: 12px 0; display: flex; }
+  .msg-user { justify-content: flex-end; }
+  .msg-bot { justify-content: flex-start; }
 
-  <script>
-    const chatBox = document.getElementById("chat-box");
-    const msgInput = document.getElementById("msg");
-    const sendBtn = document.getElementById("send");
+  .bubble {
+    max-width: 70%;
+    padding: 12px 18px;
+    border-radius: 20px;
+    font-size: 15px;
+    line-height: 1.4;
+    position: relative;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    animation: fadeIn 0.3s ease-in;
+  }
 
-    function addMessage(text, sender="user") {
-      let div = document.createElement("div");
-      div.className = sender === "user" ? "msg-user" : "msg-bot";
-      let bubble = document.createElement("div");
-      bubble.className = "bubble " + (sender === "user" ? "bubble-user" : "bubble-bot");
-      bubble.innerText = text;
-      div.appendChild(bubble);
-      chatBox.appendChild(div);
-      chatBox.scrollTop = chatBox.scrollHeight;
-    }
+  .bubble-user {
+    background: linear-gradient(135deg, #4facfe, #00f2fe);
+    color: white;
+    border-bottom-right-radius: 5px;
+  }
 
-    async function sendMessage() {
-      let msg = msgInput.value.trim();
-      if (!msg) return;
-      addMessage(msg, "user");
-      msgInput.value = "";
+  .bubble-bot {
+    background: #e5e5ea;
+    color: #111;
+    border-bottom-left-radius: 5px;
+  }
 
-      let res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg })
-      });
-      let data = await res.json();
-      if (data.reply) addMessage(data.reply, "bot");
-      else addMessage("❌ Ошибка: " + (data.error || "неизвестно"), "bot");
-    }
+  /* «хвостики» у облачков */
+  .bubble-user::after {
+    content: "";
+    position: absolute;
+    right: -8px;
+    bottom: 0;
+    width: 0;
+    height: 0;
+    border-left: 10px solid #4facfe;
+    border-top: 10px solid transparent;
+    border-bottom: 0 solid transparent;
+  }
 
-    sendBtn.onclick = sendMessage;
-    msgInput.addEventListener("keypress", e => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        sendMessage();
-      }
-    });
-  </script>
-</body>
-</html>
+  .bubble-bot::after {
+    content: "";
+    position: absolute;
+    left: -8px;
+    bottom: 0;
+    width: 0;
+    height: 0;
+    border-right: 10px solid #e5e5ea;
+    border-top: 10px solid transparent;
+    border-bottom: 0 solid transparent;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+</style>

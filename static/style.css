@@ -81,7 +81,7 @@ header {
   bottom: 4px;
   right: 8px;
   font-size: 11px;
-  color: var(--time);
+  color: #aaa;
 }
 
 .composer {

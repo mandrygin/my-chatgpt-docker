@@ -118,6 +118,8 @@ textarea {
   background: #0e1621;
   color: var(--text);
   outline: none;
+
+  /* мягкая внутренняя обводка */
   box-shadow: inset 0 0 0 1px #333;
 }
 
@@ -131,13 +133,12 @@ button {
   width: 40px;
   height: 40px;
   background: #2b5278;
-  color: #fff;
-  font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: background 0.2s;
+  padding: 0; /* убираем лишние отступы */
 }
 
 button:hover:not(:disabled) {

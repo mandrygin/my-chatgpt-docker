@@ -33,8 +33,8 @@
       <button id="send">Отправить</button>
     </div>
     <div class="hint">
-  © 2025 Компания «ИСЭ». Все права защищены.
-</div>
+      © 2025 Компания «ИСЭ». Все права защищены.
+    </div>
   </div>
 
 <script>
@@ -45,9 +45,18 @@
   function addMessage(html, who='user') {
     const row = document.createElement('div');
     row.className = 'row ' + (who === 'user' ? 'user' : 'bot');
+
     const bub = document.createElement('div');
     bub.className = 'bubble ' + (who === 'user' ? 'user' : 'bot');
     bub.innerHTML = html;
+
+    // --- добавляем время ---
+    const time = document.createElement('div');
+    time.className = 'time';
+    const now = new Date();
+    time.textContent = now.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+    bub.appendChild(time);
+
     row.appendChild(bub);
     chat.appendChild(row);
     chat.scrollTop = chat.scrollHeight;

@@ -8,8 +8,8 @@ services:
       - "8080:8080"
     environment:
       # !!! НЕ храните реальный ключ в репозитории
-      OPENAI_API_KEY: "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"   # ключ OpenRouter
-      MODEL: "anthropic/claude-3.5-haiku"  # или, например: anthropic/claude-3.5-sonnet
+      OPENAI_API_KEY: "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"   # ключ OpenRouter
+      MODEL: "deepseek/deepseek-chat"  # или, например: anthropic/claude-3.5-sonnet
       APP_NAME: "help-gpt"
       APP_URL: "http://localhost:8080"
     restart: unless-stopped

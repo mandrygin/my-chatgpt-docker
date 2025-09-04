@@ -30,8 +30,14 @@
 
     <div class="composer">
       <textarea id="msg" rows="2" placeholder="Введите сообщение... (Enter — отправить, Shift+Enter — новая строка)"></textarea>
-      <button id="send">Отправить</button>
+      <button id="send" aria-label="Отправить">
+        <!-- SVG иконка самолётика -->
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="white">
+          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+        </svg>
+      </button>
     </div>
+
     <div class="hint">
       © 2025 Компания «ИСЭ». Все права защищены.
     </div>

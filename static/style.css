@@ -18,13 +18,21 @@ body {
 }
 
 header {
+  box-sizing: border-box;
   padding: 14px 20px;
-  font-weight: 1600;
+  font-weight: 600;
   font-size: 18px;
   background: var(--panel);
   border-bottom: 1px solid #222;
-  width: 100%;          /* растянуть */
-  box-sizing: border-box;
+
+  /* full-bleed: растянуть до краёв экрана, даже внутри .wrap */
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+
+  position: sticky; /* можно fixed */
+  top: 0;
+  z-index: 1000;
 }
 
 

@@ -6,31 +6,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Мой ChatGPT</title>
   <link rel="stylesheet" href="style.css">
-  <style>
-    :root {
-      --bg: #f0f2f5; --panel: #ffffff; --bot: #e5e5ea;
-      --user1: #4facfe; --user2: #00f2fe; --text: #111;
-    }
-    *{box-sizing:border-box} html,body{height:100%}
-    body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:var(--text);display:flex;flex-direction:column}
-    header{padding:14px 18px;font-weight:700;font-size:18px}
-    .wrap{width:min(920px,100%);margin:0 auto;padding:0 12px 16px;display:flex;flex-direction:column;gap:12px;flex:1}
-    #chat-box{flex:1;min-height:60vh;background:var(--panel);border-radius:16px;padding:16px;overflow-y:auto;box-shadow:0 6px 18px rgba(0,0,0,.06)}
-    .row{display:flex;margin:10px 0}.row.user{justify-content:flex-end}.row.bot{justify-content:flex-start}
-    .bubble{max-width:78%;padding:12px 16px;border-radius:18px;line-height:1.45;position:relative;box-shadow:0 2px 6px rgba(0,0,0,.08);animation:fadeIn .18s ease-out;word-wrap:break-word;white-space:pre-wrap}
-    .bubble.user{color:#fff;background:linear-gradient(135deg,var(--user1),var(--user2));border-bottom-right-radius:6px}
-    .bubble.user::after{content:"";position:absolute;right:-8px;bottom:0;border-left:10px solid var(--user1);border-top:10px solid transparent}
-    .bubble.bot{background:var(--bot);color:var(--text);border-bottom-left-radius:6px}
-    .bubble.bot::after{content:"";position:absolute;left:-8px;bottom:0;border-right:10px solid var(--bot);border-top:10px solid transparent}
-    @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-    .composer{display:flex;gap:10px;background:var(--panel);border-radius:14px;padding:10px;box-shadow:0 6px 18px rgba(0,0,0,.06)}
-    textarea{flex:1;border:none;resize:none;outline:none;padding:10px 12px;border-radius:10px;font-size:15px;max-height:30vh}
-    button{border:none;border-radius:10px;padding:0 18px;background:linear-gradient(135deg,var(--user1),var(--user2));color:#fff;font-weight:600;cursor:pointer;min-width:110px;height:44px}
-    button:disabled{opacity:.6;cursor:default}.hint{font-size:12px;opacity:.7;padding:0 4px}
-    /* чуть поджимаем формулы внутри пузыря */
-    .bubble .MathJax{line-height:1.2}
-  </style>
-
   <!-- MathJax конфигурация -->
   <script>
     window.MathJax = {

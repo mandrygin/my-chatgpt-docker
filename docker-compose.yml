@@ -5,13 +5,17 @@ services:
     build: .
     container_name: help-gpt
     ports:
-      - "8080:8080"  # веб-чат будет доступен на http://<IP>:8080
+      - "8080:8080"
     environment:
-      OPENAI_API_KEY: "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"
-      MODEL: "mistral/mistral-large"   # или другая доступная модель
+      # !!! НЕ храните реальный ключ в репозитории
+      OPENAI_API_KEY: "sk-or-..."   # ключ OpenRouter
+      MODEL: "openai/gpt-4.1-mini"  # или, например: anthropic/claude-3.5-sonnet
+      APP_NAME: "help-gpt"
+      APP_URL: "http://localhost:8080"
     restart: unless-stopped
-    volumes:
-      - appdata:/app
+    # УБРАЛ том, чтобы не затирать код. Если нужен — маунтите другую директорию.
+    # volumes:
+    #   - appdata:/data
 
-volumes:
-  appdata:
+# volumes:
+#   appdata:

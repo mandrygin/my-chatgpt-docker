@@ -9,7 +9,7 @@ services:
     environment:
       # !!! НЕ храните реальный ключ в репозитории
       OPENAI_API_KEY: "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"   # ключ OpenRouter
-      MODEL: "google/gemini-1.5-flash"  # или, например: anthropic/claude-3.5-sonnet
+      MODEL: "openai/gpt-4.1-mini"  # или, например: anthropic/claude-3.5-sonnet
       APP_NAME: "help-gpt"
       APP_URL: "http://localhost:8080"
     restart: unless-stopped

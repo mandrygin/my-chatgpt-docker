@@ -82,9 +82,9 @@ header {
 
 /* Сообщения пользователя */
 .bubble.user {
-  background: linear-gradient(135deg, #4facfe, #00f2fe);
+  background: #2481cc;        /* мягкий телеграм-синий */
   color: #fff;
-  border-radius: 16px 16px 4px 16px;
+  border-radius: 18px 18px 4px 18px;
   align-self: flex-end;
 }
 

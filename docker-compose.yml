@@ -7,15 +7,12 @@ services:
     ports:
       - "8080:8080"
     environment:
-      # !!! НЕ храните реальный ключ в репозитории
       OPENAI_API_KEY: ${OPENAI_API_KEY}   # <-- ключ берём из переменной стека
-      MODEL: "deepseek/deepseek-chat"   # или, например: anthropic/claude-3.5-sonnet
+      MODEL: "deepseek/deepseek-chat"     # или, например: anthropic/claude-3.5-sonnet
       APP_NAME: "help-gpt"
       APP_URL: "http://localhost:8080"
+      TZ: "Europe/Moscow"                 # <-- локальная таймзона
     restart: unless-stopped
-    # УБРАЛ том, чтобы не затирать код. Если нужен — маунтите другую директорию.
-    # volumes:
-    #   - appdata:/data
-
-# volumes:
-#   appdata:
+    volumes:
+      - /etc/localtime:/etc/localtime:ro  # <-- берём время с хоста
+      - /etc/timezone:/etc/timezone:ro    # <-- и таймзону с хоста

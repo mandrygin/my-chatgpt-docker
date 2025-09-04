@@ -141,6 +141,12 @@ button {
   padding: 0; /* убираем лишние отступы */
 }
 
+button svg {
+  width: 20px;
+  height: 20px;
+  fill: #fff;
+}
+
 button:hover:not(:disabled) {
   background: #3a6da0;
 }

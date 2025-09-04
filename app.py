@@ -1,14 +1,20 @@
 from flask import Flask, request, jsonify, send_from_directory
-import os
-import requests
+import os, requests
 
 # ==== Конфиг из переменных окружения ====
-API_KEY = os.environ["OPENAI_API_KEY"]                     # ключ OpenRouter (sk-or-…)
-MODEL   = os.environ.get("MODEL", "openai/gpt-4.1-mini")   # имя модели OpenRouter
-API_URL = os.environ.get("OPENROUTER_URL",
-                         "https://openrouter.ai/api/v1/chat/completions")
-APP_URL = os.environ.get("APP_URL", "http://localhost:8080")
+API_KEY  = os.environ["OPENAI_API_KEY"]                          # sk-or-...
+MODEL    = os.environ.get("MODEL", "deepseek/deepseek-chat")     # нужная модель
+API_URL  = os.environ.get("OPENROUTER_URL",
+                           "https://openrouter.ai/api/v1/chat/completions")
+APP_URL  = os.environ.get("APP_URL", "http://localhost:8080")
 APP_NAME = os.environ.get("APP_NAME", "help-gpt")
+
+# Короткая системная инструкция: разрешены Markdown и LaTeX
+SYSTEM_PROMPT = os.environ.get(
+    "SYSTEM_PROMPT",
+    "Отвечай понятно и кратко. Разрешено использовать Markdown и LaTeX "
+    "(формулы: $...$, $$...$$, \\(...\\), \\[...\\])."
+)
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 
@@ -31,13 +37,16 @@ def chat():
     headers = {
         "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json",
-        # Рекомендуемые OpenRouter заголовки
         "Referer": APP_URL,
         "X-Title": APP_NAME,
     }
     body = {
         "model": MODEL,
-        "messages": [{"role": "user", "content": msg}],
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user",   "content": msg},
+        ],
+        "temperature": 0.3
     }
 
     try:
@@ -45,7 +54,6 @@ def chat():
     except requests.RequestException as e:
         return jsonify({"error": "network", "details": str(e)}), 502
 
-    # Если не 2xx — вернём текст ошибки от OpenRouter, чтобы было видно причину
     if not r.ok:
         return jsonify({"error": f"upstream {r.status_code}", "details": r.text}), 502
 
@@ -59,5 +67,4 @@ def chat():
 
 
 if __name__ == "__main__":
-    # слушаем весь интерфейс и порт 8080 (под docker)
     app.run(host="0.0.0.0", port=8080)

@@ -60,64 +60,67 @@
 </div>
   </div>
 
-  <script>
-    const chat = document.getElementById('chat-box');
-    const input = document.getElementById('msg');
-    const sendBtn = document.getElementById('send');
+<script>
+  const chat = document.getElementById('chat-box');
+  const input = document.getElementById('msg');
+  const sendBtn = document.getElementById('send');
 
-    function addMessage(html, who='user') {
-      const row = document.createElement('div');
-      row.className = 'row ' + (who === 'user' ? 'user' : 'bot');
-      const bub = document.createElement('div');
-      bub.className = 'bubble ' + (who === 'user' ? 'user' : 'bot');
+  function addMessage(html, who='user') {
+    const row = document.createElement('div');
+    row.className = 'row ' + (who === 'user' ? 'user' : 'bot');
+    const bub = document.createElement('div');
+    bub.className = 'bubble ' + (who === 'user' ? 'user' : 'bot');
+    bub.innerHTML = html;
+    row.appendChild(bub);
+    chat.appendChild(row);
+    chat.scrollTop = chat.scrollHeight;
 
-      // ВАЖНО: innerHTML нужен, чтобы MathJax видел $...$
-      bub.innerHTML = html;
-      row.appendChild(bub);
-      chat.appendChild(row);
-      chat.scrollTop = chat.scrollHeight;
-
-      // Рендерим только внутри добавленного пузыря — быстрее
-      if (window.MathJax && MathJax.typesetPromise) {
-        MathJax.typesetPromise([bub]).catch(console.error);
-      }
+    if (window.MathJax && MathJax.typesetPromise) {
+      MathJax.typesetPromise([bub]).catch(console.error);
     }
+  }
 
-    async function askLLM(msg) {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({message: msg})
-      });
-      const data = await res.json().catch(()=> ({}));
-      if (data.reply) return data.reply;
-      throw new Error(data.details || data.error || 'Неизвестная ошибка');
-    }
-
-    async function send() {
-      const msg = input.value.trim();
-      if (!msg) return;
-      addMessage(msg, 'user');
-      input.value = '';
-      input.focus();
-      sendBtn.disabled = true;
-
-      try {
-        const reply = await askLLM(msg);
-        addMessage(reply, 'bot');
-      } catch (e) {
-        addMessage('❌ ' + e.message, 'bot');
-      } finally {
-        sendBtn.disabled = false;
-      }
-    }
-
-    sendBtn.addEventListener('click', send);
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  async function askLLM(msg) {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({message: msg})
     });
+    const data = await res.json().catch(()=> ({}));
+    if (data.reply) return data.reply;
+    throw new Error(data.details || data.error || 'Неизвестная ошибка');
+  }
 
-    addMessage('Привет!', 'bot');
-  </script>
+  async function send() {
+    const msg = input.value.trim();
+    if (!msg) return;
+    addMessage(msg, 'user');
+    input.value = '';
+    input.focus();
+    sendBtn.disabled = true;
+
+    try {
+      const reply = await askLLM(msg);
+      addMessage(reply, 'bot');
+    } catch (e) {
+      addMessage('❌ ' + e.message, 'bot');
+    } finally {
+      sendBtn.disabled = false;
+    }
+  }
+
+  sendBtn.addEventListener('click', send);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
+  });
+
+  // Приветственное сообщение
+  document.addEventListener('DOMContentLoaded', () => {
+    addMessage('Привет! 👋 Чем могу помочь?', 'bot');
+  });
+</script>
 </body>
 </html>

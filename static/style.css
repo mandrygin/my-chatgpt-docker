@@ -163,3 +163,13 @@ button:disabled {
   box-shadow: inset 0 0 0 1px #333;
   padding: 8px 10px 8px 22px;
 }
+
+.hint {
+  position: fixed;
+  bottom: 8px;
+  left: 12px;
+  font-size: 12px;
+  color: var(--time);
+  opacity: 0.7;
+  pointer-events: none; /* чтобы не мешала кликам */
+}

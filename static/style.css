@@ -18,12 +18,15 @@ body {
 }
 
 header {
-  padding: 14px;
+  padding: 14px 20px;
   font-weight: 600;
   font-size: 18px;
   background: var(--panel);
   border-bottom: 1px solid #222;
+  width: 100%;          /* растянуть */
+  box-sizing: border-box;
 }
+
 
 .wrap {
   flex: 1;

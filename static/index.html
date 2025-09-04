@@ -1,68 +1,207 @@
-<style>
-  body { background: #f0f2f5; font-family: Arial, sans-serif; }
-  #chat-box {
-    height: 80vh;
-    overflow-y: auto;
-    padding: 20px;
-    background: #fff;
-    border-radius: 15px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-  }
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Мой ChatGPT</title>
+  <style>
+    :root {
+      --bg: #f0f2f5;
+      --panel: #ffffff;
+      --bot: #e5e5ea;
+      --user1: #4facfe;
+      --user2: #00f2fe;
+      --text: #111;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      padding: 14px 18px;
+      font-weight: 700;
+      font-size: 18px;
+    }
+    .wrap {
+      width: min(920px, 100%);
+      margin: 0 auto;
+      padding: 0 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      flex: 1 1 auto;
+    }
+    #chat-box {
+      flex: 1 1 auto;
+      min-height: 60vh;
+      background: var(--panel);
+      border-radius: 16px;
+      padding: 16px;
+      overflow-y: auto;
+      box-shadow: 0 6px 18px rgba(0,0,0,.06);
+    }
+    .row { display: flex; margin: 10px 0; }
+    .row.user { justify-content: flex-end; }
+    .row.bot  { justify-content: flex-start; }
 
-  .msg-user, .msg-bot { margin: 12px 0; display: flex; }
-  .msg-user { justify-content: flex-end; }
-  .msg-bot { justify-content: flex-start; }
+    .bubble {
+      max-width: 78%;
+      padding: 12px 16px;
+      border-radius: 18px;
+      line-height: 1.45;
+      position: relative;
+      box-shadow: 0 2px 6px rgba(0,0,0,.08);
+      animation: fadeIn .18s ease-out;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+    }
+    .bubble.user {
+      color: #fff;
+      background: linear-gradient(135deg, var(--user1), var(--user2));
+      border-bottom-right-radius: 6px;
+    }
+    .bubble.user::after {
+      content: "";
+      position: absolute;
+      right: -8px; bottom: 0;
+      border-left: 10px solid var(--user1);
+      border-top: 10px solid transparent;
+    }
+    .bubble.bot {
+      background: var(--bot);
+      color: var(--text);
+      border-bottom-left-radius: 6px;
+    }
+    .bubble.bot::after {
+      content: "";
+      position: absolute;
+      left: -8px; bottom: 0;
+      border-right: 10px solid var(--bot);
+      border-top: 10px solid transparent;
+    }
 
-  .bubble {
-    max-width: 70%;
-    padding: 12px 18px;
-    border-radius: 20px;
-    font-size: 15px;
-    line-height: 1.4;
-    position: relative;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    animation: fadeIn 0.3s ease-in;
-  }
+    @keyframes fadeIn { from {opacity:0; transform: translateY(6px)} to {opacity:1; transform: translateY(0)} }
 
-  .bubble-user {
-    background: linear-gradient(135deg, #4facfe, #00f2fe);
-    color: white;
-    border-bottom-right-radius: 5px;
-  }
+    .composer {
+      display: flex;
+      gap: 10px;
+      background: var(--panel);
+      border-radius: 14px;
+      padding: 10px;
+      box-shadow: 0 6px 18px rgba(0,0,0,.06);
+    }
+    textarea {
+      flex: 1 1 auto;
+      border: none;
+      resize: none;
+      outline: none;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 15px;
+      max-height: 30vh;
+    }
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 0 18px;
+      background: linear-gradient(135deg, var(--user1), var(--user2));
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      min-width: 110px;
+      height: 44px;
+    }
+    button:disabled { opacity: .6; cursor: default; }
+    .hint { font-size: 12px; opacity: .7; padding: 0 4px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>💬 Мой ChatGPT</header>
 
-  .bubble-bot {
-    background: #e5e5ea;
-    color: #111;
-    border-bottom-left-radius: 5px;
-  }
+    <div id="chat-box" aria-live="polite"></div>
 
-  /* «хвостики» у облачков */
-  .bubble-user::after {
-    content: "";
-    position: absolute;
-    right: -8px;
-    bottom: 0;
-    width: 0;
-    height: 0;
-    border-left: 10px solid #4facfe;
-    border-top: 10px solid transparent;
-    border-bottom: 0 solid transparent;
-  }
+    <div class="composer">
+      <textarea id="msg" rows="2" placeholder="Введите сообщение... (Enter — отправить, Shift+Enter — новая строка)"></textarea>
+      <button id="send">Отправить</button>
+    </div>
+    <div class="hint">Подсказка: напишите <i>телефон Иванов Иван</i> — если включили поиск контактов.</div>
+  </div>
 
-  .bubble-bot::after {
-    content: "";
-    position: absolute;
-    left: -8px;
-    bottom: 0;
-    width: 0;
-    height: 0;
-    border-right: 10px solid #e5e5ea;
-    border-top: 10px solid transparent;
-    border-bottom: 0 solid transparent;
-  }
+  <script>
+    const chat = document.getElementById('chat-box');
+    const input = document.getElementById('msg');
+    const sendBtn = document.getElementById('send');
 
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-</style>
+    function addMessage(text, who='user') {
+      const row = document.createElement('div');
+      row.className = 'row ' + (who === 'user' ? 'user' : 'bot');
+      const bub = document.createElement('div');
+      bub.className = 'bubble ' + (who === 'user' ? 'user' : 'bot');
+      bub.textContent = text;
+      row.appendChild(bub);
+      chat.appendChild(row);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    async function askLLM(msg) {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({message: msg})
+      });
+      const data = await res.json().catch(()=> ({}));
+      if (data.reply) return data.reply;
+      throw new Error(data.details || data.error || 'Неизвестная ошибка');
+    }
+
+    async function send() {
+      const msg = input.value.trim();
+      if (!msg) return;
+      addMessage(msg, 'user');
+      input.value = '';
+      input.focus();
+      sendBtn.disabled = true;
+
+      try {
+        // простая команда «телефон Имя Фамилия»
+        const m = msg.match(/^телефон\s+(.+)/i);
+        if (m) {
+          const q = encodeURIComponent(m[1]);
+          const r = await fetch('/api/phone?name=' + q);
+          const d = await r.json();
+          if (d.results?.length) {
+            addMessage(d.results.map(x => `${x.name}: ${x.phone}`).join('\n'), 'bot');
+          } else {
+            addMessage('Не нашёл такой записи.', 'bot');
+          }
+        } else {
+          const reply = await askLLM(msg);
+          addMessage(reply, 'bot');
+        }
+      } catch (e) {
+        addMessage('❌ ' + e.message, 'bot');
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+
+    sendBtn.addEventListener('click', send);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        send();
+      }
+    });
+
+    // приветствие
+    addMessage('Привет! Чем могу помочь? 🙂', 'bot');
+  </script>
+</body>
+</html>

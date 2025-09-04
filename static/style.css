@@ -1,10 +1,10 @@
 :root {
-  --bg: #0e1621;        /* общий фон */
-  --panel: #17212b;     /* фон для области чата */
-  --bot: #2b5278;       /* цвет пузырей бота */
-  --user: #182533;      /* цвет пузырей юзера */
-  --text: #fff;         /* текст белый */
-  --time: #aaa;         /* цвет времени/подписей */
+  --bg: #0e1621;
+  --panel: #17212b;
+  --bot: #2b5278;
+  --user: #182533;
+  --text: #fff;
+  --time: #aaa;
 }
 
 body {
@@ -57,12 +57,13 @@ header {
 
 .bubble {
   max-width: 70%;
-  padding: 10px 14px;
-  border-radius: 12px;
+  padding: 10px 14px 18px; /* добавим место снизу для времени */
+  border-radius: 14px;
   line-height: 1.4;
   font-size: 15px;
   white-space: pre-wrap;
   word-wrap: break-word;
+  position: relative;
 }
 
 .bubble.user {
@@ -73,6 +74,14 @@ header {
 .bubble.bot {
   background: var(--bot);
   color: var(--text);
+}
+
+.time {
+  position: absolute;
+  bottom: 4px;
+  right: 8px;
+  font-size: 11px;
+  color: var(--time);
 }
 
 .composer {

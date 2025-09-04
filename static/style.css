@@ -55,33 +55,43 @@ header {
   justify-content: flex-start;
 }
 
+/* Общие стили пузырьков */
 .bubble {
   max-width: 70%;
-  padding: 10px 14px 18px; /* добавим место снизу для времени */
-  border-radius: 14px;
+  padding: 10px 14px;
   line-height: 1.4;
-  font-size: 15px;
-  white-space: pre-wrap;
-  word-wrap: break-word;
   position: relative;
+  font-size: 15px;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  display: inline-block;
+  margin: 4px 0;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.15);
 }
 
+/* Сообщения пользователя */
 .bubble.user {
-  background: var(--user);
-  color: var(--text);
+  background: linear-gradient(135deg, #4facfe, #00f2fe);
+  color: #fff;
+  border-radius: 16px 16px 4px 16px;  /* нижний левый чуть «прямее» */
+  align-self: flex-end;
 }
 
+/* Сообщения бота */
 .bubble.bot {
-  background: var(--bot);
-  color: var(--text);
+  background: #2c3e50;
+  color: #fff;
+  border-radius: 16px 16px 16px 4px;  /* нижний правый чуть «прямее» */
+  align-self: flex-start;
 }
 
+/* Время внизу справа */
 .time {
-  position: absolute;
-  bottom: 4px;
-  right: 8px;
   font-size: 11px;
-  color: #aaa;
+  opacity: 0.7;
+  margin-left: 8px;
+  display: inline-block;
+  float: right;
 }
 
 .composer {

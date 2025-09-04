@@ -78,32 +78,43 @@ header {
 .bubble.user {
   color: #fff;
   background: linear-gradient(135deg, var(--user1), var(--user2));
-  border-bottom-right-radius: 6px;
+  border-bottom-right-radius: 4px;
+  border-top-right-radius: 18px;
+  border-top-left-radius: 18px;
+  border-bottom-left-radius: 18px;
 }
 
 .bubble.user::after {
   content: "";
   position: absolute;
-  right: -8px;
-  bottom: 0;
-  border-left: 10px solid var(--user1);
-  border-top: 10px solid transparent;
+  right: -6px;
+  bottom: 6px;
+  width: 12px;
+  height: 12px;
+  background: linear-gradient(135deg, var(--user1), var(--user2));
+  border-bottom-left-radius: 12px;
 }
 
 .bubble.bot {
   background: var(--bot);
   color: var(--text);
-  border-bottom-left-radius: 6px;
+  border-bottom-left-radius: 4px;
+  border-top-right-radius: 18px;
+  border-top-left-radius: 18px;
+  border-bottom-right-radius: 18px;
 }
 
 .bubble.bot::after {
   content: "";
   position: absolute;
-  left: -8px;
-  bottom: 0;
-  border-right: 10px solid var(--bot);
-  border-top: 10px solid transparent;
+  left: -6px;
+  bottom: 6px;
+  width: 12px;
+  height: 12px;
+  background: var(--bot);
+  border-bottom-right-radius: 12px;
 }
+
 
 @keyframes fadeIn {
   from {opacity: 0; transform: translateY(6px)}

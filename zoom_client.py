@@ -109,27 +109,31 @@ def _fmt_meetings(items: list[dict], tz_name: str) -> str:
 
 
 def handle_zoom_intents(zoom: ZoomClient, text: str) -> str | None:
-    t = text.lower()
+    t = (text or "").lower().strip()
 
     # список встреч
-    if any(k in t for k in ["список встреч", "мои встречи", "покажи встречи", "встречи в зум", "встречи zoom"]):
+    if re.search(r"\b(список|мои|покажи)\s+встреч", t) or "встречи zoom" in t or "встречи зум" in t:
         items = zoom.list_meetings("upcoming", 20)
         return _fmt_meetings(items, zoom.tz)
 
     # отмена по ID
-    m = re.search(r"(отмени|удали)\s+встреч[ауы]?\s+(\d{6,})", t)
+    m = re.search(r"(отмени|удали)\s+встреч[ауые]?\s+(\d{6,})", t)
     if m:
         mid = m.group(2)
         zoom.delete_meeting(mid)
         return f"🗑️ Встреча **{mid}** отменена."
 
     # создание
-    if "встреч" in t and any(k in t for k in ["zoom", "зум"]):
-        if any(k in t for k in ["создай", "создать", "сделай", "запланируй"]):
-            when = dateparser.parse(t, languages=["ru"], settings={"PREFER_DATES_FROM": "future"}) or datetime.now()
+    if re.search(r"\b(создай|создать|сделай|запланируй)\b.*\bвстреч[ауые]?\b", t) \
+       or (("в зум" in t or "в zoom" in t) and "встреч" in t):
+        when = dateparser.parse(t, languages=["ru"], settings={"PREFER_DATES_FROM": "future"}) or datetime.now()
+        try:
             data = zoom.create_meeting("Встреча", when, 60)
-            when_str = when.strftime("%d.%m.%Y %H:%M")
-            pwd = f"\nПароль: {data.get('password')}" if data.get('password') else ""
-            return f"✅ Встреча в Zoom создана на {when_str} ({zoom.tz}).\nСсылка: {data.get('join_url')}\nID: {data.get('id')}{pwd}"
+        except requests.HTTPError as e:
+            return f"❌ Zoom API: {e.response.status_code} {e.response.text}"
+        when_str = when.strftime("%d.%m.%Y %H:%M")
+        pwd = f"\nПароль: {data.get('password')}" if data.get('password') else ""
+        return f"✅ Встреча в Zoom создана на {when_str} ({zoom.tz}).\nСсылка: {data.get('join_url')}\nID: {data.get('id')}{pwd}"
 
     return None
+

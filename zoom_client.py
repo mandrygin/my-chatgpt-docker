@@ -145,17 +145,29 @@ def _extract_topic(text: str) -> str | None:
 
 def _parse_when_ru(text: str, tz_name: str) -> datetime | None:
     normalized = _normalize_time_tokens(text.lower())
+    tz = pytz.timezone(tz_name)
+
     settings = {
         "PREFER_DATES_FROM": "future",
-        "RELATIVE_BASE": datetime.now(pytz.timezone(tz_name)),
+        "RELATIVE_BASE": datetime.now(tz),
         "TIMEZONE": tz_name,
         "RETURN_AS_TIMEZONE_AWARE": True,
     }
     dt = dateparser.parse(normalized, languages=["ru"], settings=settings)
-    # Иногда dateparser возвращает naive; проставим таймзону
-    if dt and dt.tzinfo is None:
-        dt = pytz.timezone(tz_name).localize(dt)
+
+    if not dt:
+        return None
+
+    # если без tz — проставим
+    if dt.tzinfo is None:
+        dt = tz.localize(dt)
+
+    # --- Хак: слово "завтра" явно есть, а дата совпала с сегодня ---
+    if "завтра" in normalized and dt.date() == datetime.now(tz).date():
+        dt = dt + timedelta(days=1)
+
     return dt
+
 
 
 def handle_zoom_intents(zoom: ZoomClient, text: str) -> str | None:

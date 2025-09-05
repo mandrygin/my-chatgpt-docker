@@ -1,7 +1,7 @@
 # zoom_client.py
 import time
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 import pytz
 import dateparser
@@ -83,7 +83,7 @@ class ZoomClient:
     def delete_meeting(self, meeting_id: str) -> bool:
         r = requests.delete(
             f"{self.API_BASE}/meetings/{meeting_id}",
-            headers=self._headers(),
+            headers=self._headers()},
             timeout=20,
         )
         if r.status_code not in (200, 204):
@@ -106,79 +106,156 @@ def _fmt_meetings(items: list[dict], tz_name: str) -> str:
             when = dt.strftime("%d.%m.%Y %H:%M")
         lines.append(f"{i}. {m.get('topic') or 'Без темы'} • ID: {m.get('id')} • {when}")
     return "🗓️ Ближайшие встречи:\n" + "\n".join(lines)
-_TIME_FIXES = [
-    (r"(\b\d{1,2})\s*[:.,\- ]\s*(\d{2})", r"\1:\2"),  # 17 00 -> 17:00, 17-00 -> 17:00 и т.п.
-    (r"\b(\d{1,2})\s*ч\b", r"\1:00"),                 # 14ч -> 14:00
-    (r"\bв\s+(\d{1,2})\b", r"в \1:00"),               # "в 14" -> "в 14:00"
-]
 
-def _normalize_time_tokens(t: str) -> str:
-    s = t
+
+# --- нормализация и извлечение даты/времени ---
+
+MONTHS_RU = {
+    "январ": 1, "феврал": 2, "март": 3, "апрел": 4, "ма": 5,
+    "июн": 6, "июл": 7, "август": 8, "сентябр": 9, "октябр": 10, "ноябр": 11, "декабр": 12
+}
+
+def _strip_trailing_timestamp(text: str) -> str:
+    """Срезаем случайный хвост вида '15:12' / '15 12' / '15-12' в конце строки (из UI)."""
+    return re.sub(r"[\s\u00A0\u2009]*\b\d{1,2}[:\.\- ]\d{2}\b\s*$", "", text or "")
+
+def _normalize_time_tokens(s: str) -> str:
     # 17 00, 17-00, 17.00 → 17:00
     s = re.sub(r"\b(\d{1,2})[\s\.\-:,](\d{2})\b", r"\1:\2", s)
     # 14ч → 14:00
     s = re.sub(r"\b(\d{1,2})\s*ч\b", r"\1:00", s)
     # "в 14" → "в 14:00"
     s = re.sub(r"\bв\s+(\d{1,2})(?!:)", r"в \1:00", s)
-
-    # Если встречается "завтра" и нет явной даты → прибавим слово "завтра"
-    if "завтра" in s and not re.search(r"\d{1,2}\.\d{1,2}|\d{4}-\d{2}-\d{2}", s):
-        # ничего не меняем, просто оставляем "завтра" для dateparser
-        pass
-
-    # Если нет времени, но есть "сегодня/завтра/послезавтра" → добавим 10:00
+    # если есть сегодня/завтра/послезавтра без времени — добавим 10:00 по умолчанию
     if re.search(r"\b(сегодня|завтра|послезавтра)\b", s) and not re.search(r"\d{1,2}:\d{2}", s):
         s += " в 10:00"
-
     return s
 
 def _extract_topic(text: str) -> str | None:
-    # тема в кавычках
     m = re.search(r"[«\"']([^\"'»]{3,120})[\"'»]", text)
-    if m:
+    if m: 
         return m.group(1).strip()
-    # или после ключевого слова
-    m = re.search(r"(тема|о теме|на тему)\s*[:\-]?\s*(.+)$", text, flags=re.IGNORECASE)
+    m = re.search(r"(?:тема|на тему|о теме)\s*[:\-]?\s*(.+)$", text, flags=re.IGNORECASE)
     if m:
         return m.group(2).strip()
     return None
 
-def _parse_when_ru(text: str, tz_name: str) -> datetime | None:
-    normalized = _normalize_time_tokens(text.lower())
-    tz = pytz.timezone(tz_name)
+def _parse_explicit_date(text: str, base: datetime) -> datetime | None:
+    t = text.lower()
 
+    # 1) dd.mm(.yyyy)?
+    m = re.search(r"\b(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?\b", t)
+    if m:
+        d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3) or base.year)
+        try:
+            return base.tzinfo.localize(datetime(y, mo, d)) if base.tzinfo else datetime(y, mo, d)
+        except ValueError:
+            return None
+
+    # 2) dd <месяц-словом> (yyyy)?
+    m = re.search(r"\b(\d{1,2})\s+([а-яё]+)(?:\s+(\d{4}))?\b", t)
+    if m:
+        d = int(m.group(1))
+        mon_word = m.group(2)
+        y = int(m.group(3) or base.year)
+        mon = None
+        for stem, num in MONTHS_RU.items():
+            if mon_word.startswith(stem):
+                mon = num
+                break
+        if mon:
+            try:
+                return base.tzinfo.localize(datetime(y, mon, d)) if base.tzinfo else datetime(y, mon, d)
+            except ValueError:
+                return None
+
+    # 3) относительные ключевые слова
+    if "послезавтра" in t:
+        return (base + timedelta(days=2)).replace(hour=0, minute=0, second=0, microsecond=0)
+    if "завтра" in t:
+        return (base + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    if "сегодня" in t:
+        return base.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    return None
+
+def _extract_time(text: str) -> tuple[int, int] | None:
+    # берём ПЕРВОЕ упоминание времени
+    m = re.search(r"\b(\d{1,2})(?::|[ \.\-])?(\d{2})?\b", text)
+    if not m:
+        return None
+    hh = int(m.group(1))
+    mm = int(m.group(2) or 0)
+    if 0 <= hh <= 23 and 0 <= mm <= 59:
+        return hh, mm
+    return None
+
+def _parse_when_ru(text: str, tz_name: str) -> datetime | None:
+    text = _strip_trailing_timestamp(text or "")
+    text = _normalize_time_tokens(text)
+    tz = pytz.timezone(tz_name)
+    now = datetime.now(tz)
+
+    # 1) явная дата?
+    day = _parse_explicit_date(text, now)
+
+    # 2) время?
+    tm = _extract_time(text)
+
+    if day and tm:
+        dt = day.replace(hour=tm[0], minute=tm[1])
+        # если дата без года и получилась в прошлом — переносим на следующий год
+        if dt < now and re.search(r"\b\d{1,2}\.\d{1,2}\b", text):
+            try:
+                dt = dt.replace(year=dt.year + 1)
+            except ValueError:
+                pass
+        return dt
+
+    if day and not tm:
+        # дата есть, времени нет — берём 10:00
+        return day.replace(hour=10, minute=0)
+
+    if not day and tm:
+        # только время: если уже прошло — завтра
+        dt = now.replace(hour=tm[0], minute=tm[1], second=0, microsecond=0)
+        if dt <= now:
+            dt = dt + timedelta(days=1)
+        # если явно было «завтра» — форсируем сдвиг
+        if "завтра" in text and dt.date() == now.date():
+            dt = dt + timedelta(days=1)
+        return dt
+
+    # fallback на dateparser
     settings = {
         "PREFER_DATES_FROM": "future",
-        "RELATIVE_BASE": datetime.now(tz),
+        "DATE_ORDER": "DMY",
+        "RELATIVE_BASE": now,
         "TIMEZONE": tz_name,
         "RETURN_AS_TIMEZONE_AWARE": True,
     }
-    dt = dateparser.parse(normalized, languages=["ru"], settings=settings)
-
+    dt = dateparser.parse(text, languages=["ru"], settings=settings)
     if not dt:
         return None
-
-    # если без tz — проставим
     if dt.tzinfo is None:
         dt = tz.localize(dt)
-
-    # --- Хак: слово "завтра" явно есть, а дата совпала с сегодня ---
-    if "завтра" in normalized and dt.date() == datetime.now(tz).date():
+    if "завтра" in text and dt.date() == now.date():
         dt = dt + timedelta(days=1)
-
     return dt
 
 
+# ----- интенты -----
 
 def handle_zoom_intents(zoom: ZoomClient, text: str) -> str | None:
-    t = (text or "").lower().strip()
+    original_text = text or ""
+    t = (original_text or "").lower().strip()
 
-    # --- список встреч ---
+    # список встреч
     if re.search(r"\b(список|мои|покажи)\s+встреч", t) or "встречи zoom" in t or "встречи зум" in t:
         items = zoom.list_meetings("upcoming", 20)
         return _fmt_meetings(items, zoom.tz)
 
-    # --- удалить все встречи ---
+    # удалить все встречи
     if re.search(r"(отмени|удали)\s+все\s+встреч", t):
         items = zoom.list_meetings("upcoming", 50)
         if not items:
@@ -187,24 +264,23 @@ def handle_zoom_intents(zoom: ZoomClient, text: str) -> str | None:
             zoom.delete_meeting(m["id"])
         return f"🗑️ Удалено {len(items)} встреч."
 
-    # --- удалить по ID ---
+    # удалить по ID
     m = re.search(r"(отмени|удали)\s+встреч[ауые]?\s+(\d{6,})", t)
     if m:
         mid = m.group(2)
         zoom.delete_meeting(mid)
         return f"🗑️ Встреча **{mid}** отменена."
 
-    # --- создание встречи ---
+    # создание
     if re.search(r"\b(создай|создать|сделай|запланируй)\b.*\bвстреч[ауые]?\b", t) \
        or (("в зум" in t or "в zoom" in t) and "встреч" in t):
-
-        when = _parse_when_ru(text, zoom.tz) or datetime.now(pytz.timezone(zoom.tz))
-        topic = _extract_topic(text) or "Встреча"
+        when = _parse_when_ru(original_text, zoom.tz) or datetime.now(pytz.timezone(zoom.tz)).replace(minute=0, second=0, microsecond=0)
+        topic = _extract_topic(original_text) or "Встреча"
 
         try:
             data = zoom.create_meeting(topic, when, 60)
         except requests.HTTPError as e:
-            # покажем причину от Zoom (права, неверный email и т.д.)
+            # вернём детальнейшую ошибку Zoom, если что-то с правами/почтой
             return f"❌ Zoom API: {e.response.status_code} {e.response.text}"
 
         when_str = when.astimezone(pytz.timezone(zoom.tz)).strftime("%d.%m.%Y %H:%M")

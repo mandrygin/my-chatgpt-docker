@@ -124,11 +124,12 @@ def _strip_trailing_timestamp(text: str) -> str:
         return text
     pattern = r"\b\d{1,2}[:\.\- ]\d{2}\b"
     matches = list(re.finditer(pattern, text))
-    # если есть хотя бы два совпадения и последнее стоит в самом конце — срезаем только его
+    # есть хотя бы два времени и последнее стоит в самом конце — срезаем только его
     if len(matches) >= 2 and re.search(pattern + r"\s*$", text):
         last = matches[-1]
         return text[:last.start()].rstrip()
     return text
+
 
 
 def _normalize_time_tokens(s: str) -> str:
@@ -193,29 +194,34 @@ def _parse_explicit_date(text: str, base: datetime) -> datetime | None:
 
 def _extract_time(text: str) -> tuple[int, int] | None:
     """
-    Извлекаем время из строки.
-    Поддержка форматов: 11:00, 11.00, 11-00, '11 00', '11ч', 'в 11', 'в 11 утра/вечера'.
+    Извлекаем время. Поддерживает: 11:00, 11.00, 11-00, '11 00', '11ч', 'в 11', 'в 11 утра/вечера'.
+    Не путает '06.09.2025' с '06:09'.
     """
-    text = text.lower()
+    s = text.lower()
 
-    # "11:00", "11.00", "11-00", "11 00"
-    m = re.search(r"\b(\d{1,2})[:\.\- ](\d{2})\b", text)
+    # 11:00 / 11.00 / 11-00 / 11 00 (но не часть dd.mm.yyyy: после минут — конец слова/строки)
+    m = re.search(r"\b(\d{1,2})[:\.\- ](\d{2})\b(?!\.)", s)
     if m:
         hh, mm = int(m.group(1)), int(m.group(2))
         if 0 <= hh <= 23 and 0 <= mm <= 59:
             return hh, mm
 
-    # "11ч", "11 ч"
-    m = re.search(r"\b(\d{1,2})\s*ч\b", text)
+    # 11ч / 11 ч
+    m = re.search(r"\b(\d{1,2})\s*ч\b", s)
     if m:
-        return int(m.group(1)), 0
+        hh = int(m.group(1))
+        if 0 <= hh <= 23:
+            return hh, 0
 
-    # "в 11" → по умолчанию 11:00
-    m = re.search(r"\bв\s+(\d{1,2})(?!\d)", text)
+    # "в 11" → 11:00
+    m = re.search(r"\bв\s+(\d{1,2})(?!\d)", s)
     if m:
-        return int(m.group(1)), 0
+        hh = int(m.group(1))
+        if 0 <= hh <= 23:
+            return hh, 0
 
     return None
+
 
 
 def _parse_when_ru(text: str, tz_name: str) -> datetime | None:

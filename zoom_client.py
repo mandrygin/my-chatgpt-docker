@@ -224,21 +224,67 @@ def _extract_time(text: str) -> tuple[int, int] | None:
 
 
 def _parse_when_ru(text: str, tz_name: str) -> datetime | None:
-    text = _strip_trailing_timestamp(text or "")
-    text = _normalize_time_tokens(text)
+    """
+    Полностью детерминированный парсинг БЕЗ dateparser.
+    Правила:
+      - есть дата и время → склеиваем
+      - есть только дата → 10:00
+      - есть только время → сегодня в это время; если уже прошло — завтра
+    """
+    s_orig = text or ""
+    s = _strip_trailing_timestamp(s_orig)
+    s = _normalize_time_tokens(s)  # '16 50' → '16:50', '14ч' → '14:00'
+    s_low = s.lower()
+
     tz = pytz.timezone(tz_name)
     now = datetime.now(tz)
 
-    # 1) явная дата?
-    day = _parse_explicit_date(text, now)
+    # --- Дата ---
+    day = None
+    # относительные
+    if "послезавтра" in s_low:
+        day = (now + timedelta(days=2)).replace(hour=0, minute=0, second=0, microsecond=0)
+    elif "завтра" in s_low:
+        day = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    elif "сегодня" in s_low:
+        day = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # 2) время?
-    tm = _extract_time(text)
+    # dd.mm(.yyyy)?
+    if day is None:
+        m = re.search(r"\b(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?\b", s_low)
+        if m:
+            d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3) or now.year)
+            try:
+                day = tz.localize(datetime(y, mo, d))
+            except ValueError:
+                day = None
 
+    # dd <месяц>( yyyy)?
+    if day is None:
+        m = re.search(r"\b(\d{1,2})\s+([а-яё]+)(?:\s+(\d{4}))?\b", s_low)
+        if m:
+            d = int(m.group(1))
+            mon_word = m.group(2)
+            y = int(m.group(3) or now.year)
+            mon = None
+            for stem, num in MONTHS_RU.items():
+                if mon_word.startswith(stem):
+                    mon = num
+                    break
+            if mon:
+                try:
+                    day = tz.localize(datetime(y, mon, d))
+                except ValueError:
+                    day = None
+
+    # --- Время ---
+    tm = _extract_time(s_low)  # (час, мин)
+
+    # --- Комбинация ---
     if day and tm:
         dt = day.replace(hour=tm[0], minute=tm[1])
-        # если дата без года и получилась в прошлом — переносим на следующий год
-        if dt < now and re.search(r"\b\d{1,2}\.\d{1,2}\b", text):
+        # если дата была 'dd.mm' (без года) и уже прошла — перенесём на следующий год
+        if dt < now and re.search(r"\b\d{1,2}\.\d{1,2}\b", s_low) and not re.search(r"\b\d{1,2}\.\d{1,2}\.\d{4}\b", s_low):
             try:
                 dt = dt.replace(year=dt.year + 1)
             except ValueError:
@@ -246,35 +292,17 @@ def _parse_when_ru(text: str, tz_name: str) -> datetime | None:
         return dt
 
     if day and not tm:
-        # дата есть, времени нет — берём 10:00
         return day.replace(hour=10, minute=0)
 
     if not day and tm:
-        # только время: если уже прошло — завтра
         dt = now.replace(hour=tm[0], minute=tm[1], second=0, microsecond=0)
         if dt <= now:
             dt = dt + timedelta(days=1)
-        # если явно было «завтра» — форсируем сдвиг
-        if "завтра" in text and dt.date() == now.date():
-            dt = dt + timedelta(days=1)
         return dt
 
-    # fallback на dateparser
-    settings = {
-        "PREFER_DATES_FROM": "future",
-        "DATE_ORDER": "DMY",
-        "RELATIVE_BASE": now,
-        "TIMEZONE": tz_name,
-        "RETURN_AS_TIMEZONE_AWARE": True,
-    }
-    dt = dateparser.parse(text, languages=["ru", "ru"], settings=settings)  # ru на всякий
-    if not dt:
-        return None
-    if dt.tzinfo is None:
-        dt = tz.localize(dt)
-    if "завтра" in text and dt.date() == now.date():
-        dt = dt + timedelta(days=1)
-    return dt
+    # ничего не разобрали
+    return None
+
 
 
 # ----- интенты -----

@@ -106,17 +106,56 @@ def _fmt_meetings(items: list[dict], tz_name: str) -> str:
             when = dt.strftime("%d.%m.%Y %H:%M")
         lines.append(f"{i}. {m.get('topic') or 'Без темы'} • ID: {m.get('id')} • {when}")
     return "🗓️ Ближайшие встречи:\n" + "\n".join(lines)
+_TIME_FIXES = [
+    (r"(\b\d{1,2})\s*[:.,\- ]\s*(\d{2})", r"\1:\2"),  # 17 00 -> 17:00, 17-00 -> 17:00 и т.п.
+    (r"\b(\d{1,2})\s*ч\b", r"\1:00"),                 # 14ч -> 14:00
+    (r"\bв\s+(\d{1,2})\b", r"в \1:00"),               # "в 14" -> "в 14:00"
+]
+
+def _normalize_time_tokens(t: str) -> str:
+    s = t
+    for pat, sub in _TIME_FIXES:
+        s = re.sub(pat, sub, s)
+    # "сегодня/завтра/послезавтра" без времени — добавим 10:00 по умолчанию
+    if re.search(r"\b(сегодня|завтра|послезавтра)\b", s) and not re.search(r"\d{1,2}:\d{2}", s):
+        s += " в 10:00"
+    return s
+
+def _extract_topic(text: str) -> str | None:
+    # тема в кавычках
+    m = re.search(r"[«\"']([^\"'»]{3,120})[\"'»]", text)
+    if m:
+        return m.group(1).strip()
+    # или после ключевого слова
+    m = re.search(r"(тема|о теме|на тему)\s*[:\-]?\s*(.+)$", text, flags=re.IGNORECASE)
+    if m:
+        return m.group(2).strip()
+    return None
+
+def _parse_when_ru(text: str, tz_name: str) -> datetime | None:
+    normalized = _normalize_time_tokens(text.lower())
+    settings = {
+        "PREFER_DATES_FROM": "future",
+        "RELATIVE_BASE": datetime.now(pytz.timezone(tz_name)),
+        "TIMEZONE": tz_name,
+        "RETURN_AS_TIMEZONE_AWARE": True,
+    }
+    dt = dateparser.parse(normalized, languages=["ru"], settings=settings)
+    # Иногда dateparser возвращает naive; проставим таймзону
+    if dt and dt.tzinfo is None:
+        dt = pytz.timezone(tz_name).localize(dt)
+    return dt
 
 
 def handle_zoom_intents(zoom: ZoomClient, text: str) -> str | None:
     t = (text or "").lower().strip()
 
-    # список встреч
+    # --- список встреч ---
     if re.search(r"\b(список|мои|покажи)\s+встреч", t) or "встречи zoom" in t or "встречи зум" in t:
         items = zoom.list_meetings("upcoming", 20)
         return _fmt_meetings(items, zoom.tz)
 
-    # удаление всех встреч
+    # --- удалить все встречи ---
     if re.search(r"(отмени|удали)\s+все\s+встреч", t):
         items = zoom.list_meetings("upcoming", 50)
         if not items:
@@ -125,23 +164,31 @@ def handle_zoom_intents(zoom: ZoomClient, text: str) -> str | None:
             zoom.delete_meeting(m["id"])
         return f"🗑️ Удалено {len(items)} встреч."
 
-    # удаление по ID
+    # --- удалить по ID ---
     m = re.search(r"(отмени|удали)\s+встреч[ауые]?\s+(\d{6,})", t)
     if m:
         mid = m.group(2)
         zoom.delete_meeting(mid)
         return f"🗑️ Встреча **{mid}** отменена."
 
-    # создание встречи
+    # --- создание встречи ---
     if re.search(r"\b(создай|создать|сделай|запланируй)\b.*\bвстреч[ауые]?\b", t) \
        or (("в зум" in t or "в zoom" in t) and "встреч" in t):
-        when = dateparser.parse(t, languages=["ru"], settings={"PREFER_DATES_FROM": "future"}) or datetime.now()
+
+        when = _parse_when_ru(text, zoom.tz) or datetime.now(pytz.timezone(zoom.tz))
+        topic = _extract_topic(text) or "Встреча"
+
         try:
-            data = zoom.create_meeting("Встреча", when, 60)
+            data = zoom.create_meeting(topic, when, 60)
         except requests.HTTPError as e:
+            # покажем причину от Zoom (права, неверный email и т.д.)
             return f"❌ Zoom API: {e.response.status_code} {e.response.text}"
-        when_str = when.strftime("%d.%m.%Y %H:%M")
+
+        when_str = when.astimezone(pytz.timezone(zoom.tz)).strftime("%d.%m.%Y %H:%M")
         pwd = f"\nПароль: {data.get('password')}" if data.get('password') else ""
-        return f"✅ Встреча в Zoom создана на {when_str} ({zoom.tz}).\nСсылка: {data.get('join_url')}\nID: {data.get('id')}{pwd}"
+        return (
+            f"✅ Встреча «{topic}» создана на {when_str} ({zoom.tz}).\n"
+            f"Ссылка: {data.get('join_url')}\nID: {data.get('id')}{pwd}"
+        )
 
     return None

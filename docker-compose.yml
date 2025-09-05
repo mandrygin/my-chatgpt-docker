@@ -11,12 +11,13 @@ services:
     env_file:
       - .env
 
-    environment:
-      OPENAI_API_KEY: ${OPENAI_API_KEY}   # уже из .env подтянется
-      MODEL: ${deepseek/deepseek-chat}
-      APP_NAME: "help-gpt"
-      APP_URL: "http://localhost:8080"
-      TZ: "Europe/Moscow"
+environment:
+  OPENAI_API_KEY: ${OPENAI_API_KEY}
+  MODEL: "deepseek/deepseek-chat"
+  APP_NAME: "help-gpt"
+  APP_URL: "http://localhost:8080"
+  TZ: "Europe/Moscow"
+
 
     restart: unless-stopped
 

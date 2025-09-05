@@ -6,13 +6,20 @@ services:
     container_name: help-gpt
     ports:
       - "8080:8080"
+
+    # подключаем .env к этому сервису
+    env_file:
+      - .env
+
     environment:
-      OPENAI_API_KEY: ${OPENAI_API_KEY}   # <-- ключ берём из переменной стека
-      MODEL: "deepseek/deepseek-chat"     # или, например: anthropic/claude-3.5-sonnet
+      OPENAI_API_KEY: ${OPENAI_API_KEY}   # уже из .env подтянется
+      MODEL: "deepsseek/deepseek-chat"
       APP_NAME: "help-gpt"
       APP_URL: "http://localhost:8080"
-      TZ: "Europe/Moscow"                 # <-- локальная таймзона
+      TZ: "Europe/Moscow"
+
     restart: unless-stopped
+
     volumes:
-      - /etc/localtime:/etc/localtime:ro  # <-- берём время с хоста
-      - /etc/timezone:/etc/timezone:ro    # <-- и таймзону с хоста
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro

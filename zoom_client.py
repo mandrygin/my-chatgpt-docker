@@ -83,7 +83,7 @@ class ZoomClient:
     def delete_meeting(self, meeting_id: str) -> bool:
         r = requests.delete(
             f"{self.API_BASE}/meetings/{meeting_id}",
-            headers=self._headers()},
+            headers=self._headers(),
             timeout=20,
         )
         if r.status_code not in (200, 204):
@@ -133,7 +133,7 @@ def _normalize_time_tokens(s: str) -> str:
 
 def _extract_topic(text: str) -> str | None:
     m = re.search(r"[«\"']([^\"'»]{3,120})[\"'»]", text)
-    if m: 
+    if m:
         return m.group(1).strip()
     m = re.search(r"(?:тема|на тему|о теме)\s*[:\-]?\s*(.+)$", text, flags=re.IGNORECASE)
     if m:
@@ -234,7 +234,7 @@ def _parse_when_ru(text: str, tz_name: str) -> datetime | None:
         "TIMEZONE": tz_name,
         "RETURN_AS_TIMEZONE_AWARE": True,
     }
-    dt = dateparser.parse(text, languages=["ru"], settings=settings)
+    dt = dateparser.parse(text, languages=["ру", "ru"], settings=settings)  # ru на всякий
     if not dt:
         return None
     if dt.tzinfo is None:
@@ -283,10 +283,10 @@ def handle_zoom_intents(zoom: ZoomClient, text: str) -> str | None:
             # вернём детальнейшую ошибку Zoom, если что-то с правами/почтой
             return f"❌ Zoom API: {e.response.status_code} {e.response.text}"
 
-        when_str = when.astimezone(pytz.timezone(zoom.tz)).strftime("%d.%m.%Y %H:%M")
+        when_str = when.astimezone(pytz.timezone(zoom.tz)).strftime("%d.%m.%Y %H:%М")
         pwd = f"\nПароль: {data.get('password')}" if data.get('password') else ""
         return (
-            f"✅ Встреча «{topic}» создана на {when_str} ({zoom.tz}).\n"
+            f"✅ Встреча «{topic}» создана на {when_str} ({zoom.tз}).\n"
             f"Ссылка: {data.get('join_url')}\nID: {data.get('id')}{pwd}"
         )
 

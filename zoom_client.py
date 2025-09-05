@@ -117,14 +117,13 @@ MONTHS_RU = {
 
 def _strip_trailing_timestamp(text: str) -> str:
     """
-    Убираем случайный хвост типа '15:12' / '15 12' / '15-12' ТОЛЬКО если в строке
-    уже есть другое время раньше. Если время единственное — не трогаем.
+    Срезаем хвост '15:12' / '15 12' / '15-12' ТОЛЬКО если это второе (или дальше) время
+    в строке и стоит в самом конце. Если время одно — не трогаем.
     """
     if not text:
         return text
     pattern = r"\b\d{1,2}[:\.\- ]\d{2}\b"
     matches = list(re.finditer(pattern, text))
-    # есть хотя бы два времени и последнее стоит в самом конце — срезаем только его
     if len(matches) >= 2 and re.search(pattern + r"\s*$", text):
         last = matches[-1]
         return text[:last.start()].rstrip()

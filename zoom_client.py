@@ -268,7 +268,7 @@ def _parse_when_ru(text: str, tz_name: str) -> datetime | None:
         "TIMEZONE": tz_name,
         "RETURN_AS_TIMEZONE_AWARE": True,
     }
-    dt = dateparser.parse(text, languages=["ру", "ru"], settings=settings)  # ru на всякий
+    dt = dateparser.parse(text, languages=["ru", "ru"], settings=settings)  # ru на всякий
     if not dt:
         return None
     if dt.tzinfo is None:

@@ -283,10 +283,10 @@ def handle_zoom_intents(zoom: ZoomClient, text: str) -> str | None:
             # вернём детальнейшую ошибку Zoom, если что-то с правами/почтой
             return f"❌ Zoom API: {e.response.status_code} {e.response.text}"
 
-        when_str = when.astimezone(pytz.timezone(zoom.tz)).strftime("%d.%m.%Y %H:%М")
+        when_str = when.astimezone(pytz.timezone(zoom.tz)).strftime("%d.%m.%Y %H:%M")
         pwd = f"\nПароль: {data.get('password')}" if data.get('password') else ""
         return (
-            f"✅ Встреча «{topic}» создана на {when_str} ({zoom.tз}).\n"
+            f"✅ Встреча «{topic}» создана на {when_str} ({zoom.tz}).\n"
             f"Ссылка: {data.get('join_url')}\nID: {data.get('id')}{pwd}"
         )
 

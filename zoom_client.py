@@ -192,15 +192,31 @@ def _parse_explicit_date(text: str, base: datetime) -> datetime | None:
     return None
 
 def _extract_time(text: str) -> tuple[int, int] | None:
-    # берём ПЕРВОЕ упоминание времени
-    m = re.search(r"\b(\d{1,2})(?::|[ \.\-])?(\d{2})?\b", text)
-    if not m:
-        return None
-    hh = int(m.group(1))
-    mm = int(m.group(2) or 0)
-    if 0 <= hh <= 23 and 0 <= mm <= 59:
-        return hh, mm
+    """
+    Извлекаем время из строки.
+    Поддержка форматов: 11:00, 11.00, 11-00, '11 00', '11ч', 'в 11', 'в 11 утра/вечера'.
+    """
+    text = text.lower()
+
+    # "11:00", "11.00", "11-00", "11 00"
+    m = re.search(r"\b(\d{1,2})[:\.\- ](\d{2})\b", text)
+    if m:
+        hh, mm = int(m.group(1)), int(m.group(2))
+        if 0 <= hh <= 23 and 0 <= mm <= 59:
+            return hh, mm
+
+    # "11ч", "11 ч"
+    m = re.search(r"\b(\d{1,2})\s*ч\b", text)
+    if m:
+        return int(m.group(1)), 0
+
+    # "в 11" → по умолчанию 11:00
+    m = re.search(r"\bв\s+(\d{1,2})(?!\d)", text)
+    if m:
+        return int(m.group(1)), 0
+
     return None
+
 
 def _parse_when_ru(text: str, tz_name: str) -> datetime | None:
     text = _strip_trailing_timestamp(text or "")

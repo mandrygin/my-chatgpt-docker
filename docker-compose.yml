@@ -5,19 +5,24 @@ services:
     build: .
     container_name: help-gpt
     ports:
-      - "8080:8080"
+      - "8080:8080"               # при конфликте можно "8081:8080"
     environment:
       OPENAI_API_KEY: "${OPENAI_API_KEY}"
       MODEL: "${MODEL:-deepseek/deepseek-chat}"
       APP_NAME: "help-gpt"
       APP_URL: "${APP_URL:-http://10.99.6.148:8080}"
       TZ: "${TZ:-Europe/Moscow}"
-      # === ВАЖНО: Zoom ===
+
+      # === Zoom ===
       ZOOM_ACCOUNT_ID: "${ZOOM_ACCOUNT_ID}"
       ZOOM_CLIENT_ID: "${ZOOM_CLIENT_ID}"
       ZOOM_CLIENT_SECRET: "${ZOOM_CLIENT_SECRET}"
       ZOOM_HOST_EMAIL: "${ZOOM_HOST_EMAIL}"
       ZOOM_TZ: "${ZOOM_TZ:-Europe/Moscow}"
+
+      # === Telemost (ВАЖНО) ===
+      YANDEX_OAUTH_TOKEN: "${YANDEX_OAUTH_TOKEN}"   # <— твой y0_... токен
+      TELEMOST_TZ: "${TELEMOST_TZ:-Europe/Moscow}"
     restart: unless-stopped
     volumes:
       - /etc/localtime:/etc/localtime:ro

@@ -129,8 +129,6 @@ def _strip_trailing_timestamp(text: str) -> str:
         return text[:last.start()].rstrip()
     return text
 
-
-
 def _normalize_time_tokens(s: str) -> str:
     # 17 00, 17-00, 17.00 → 17:00
     s = re.sub(r"\b(\d{1,2})[\s\.\-:,](\d{2})\b", r"\1:\2", s)
@@ -191,36 +189,63 @@ def _parse_explicit_date(text: str, base: datetime) -> datetime | None:
 
     return None
 
+
+# ====== БРУТ-ФОРС ПО МИНУТАМ СУТОК (вне класса!) ======
+_SPACE_CLASS = r"[\s\u00A0\u202F\u2009]"  # обычный и «невидимые» пробелы
+
+def _build_time_patterns():
+    """
+    Возвращает список кортежей (compiled_regex, (hour, minute)).
+    Покрываем форматы: HH:MM, H:MM, HH-MM, H-MM, HH.MM, H.MM, HH<space>MM, H<space>MM,
+    где <space> — любой пробел (включая NBSP/узкий/тонкий).
+    """
+    pats = []
+    for h in range(24):
+        hh = f"{h:02d}"
+        h1 = str(h)
+        for m in range(60):
+            mm = f"{m:02d}"
+
+            fmt_strs = [
+                rf"\b{hh}:{mm}\b",
+                rf"\b{h1}:{mm}\b" if h1 != hh else None,
+
+                rf"\b{hh}-{mm}\b",
+                rf"\b{h1}-{mm}\b" if h1 != hh else None,
+
+                rf"\b{hh}\.{mm}\b",
+                rf"\b{h1}\.{mm}\b" if h1 != hh else None,
+
+                rf"\b{hh}{_SPACE_CLASS}+{mm}\b",
+                rf"\b{h1}{_SPACE_CLASS}+{mm}\b" if h1 != hh else None,
+            ]
+            for s in fmt_strs:
+                if s is None:
+                    continue
+                pats.append((re.compile(s, re.IGNORECASE), (h, m)))
+    return pats
+
+# Предкомпилируем один раз при импорте модуля
+_TIME_PATTERNS = _build_time_patterns()
+
+
 def _extract_time(text: str) -> tuple[int, int] | None:
     """
-    Извлекаем время. Поддерживает: 11:00, 11.00, 11-00, '11 00', '11ч', 'в 11', 'в 11 утра/вечера'.
-    Не путает '06.09.2025' с '06:09'.
+    Брут-форс: ищем любую из 1440 минут суток в типовых форматах.
+    Возвращаем (часы, минуты) при первом совпадении.
     """
-    s = text.lower()
+    if not text:
+        return None
 
-    # 11:00 / 11.00 / 11-00 / 11 00 (но не часть dd.mm.yyyy: после минут — конец слова/строки)
-    m = re.search(r"\b(\d{1,2})[:\.\- ](\d{2})\b(?!\.)", s)
-    if m:
-        hh, mm = int(m.group(1)), int(m.group(2))
-        if 0 <= hh <= 23 and 0 <= mm <= 59:
-            return hh, mm
+    # Нормализуем «невидимые» пробелы, чтобы соответствовали _SPACE_CLASS
+    s = (text.replace("\u202f", " ")
+             .replace("\u00a0", " ")
+             .replace("\u2009", " "))
 
-    # 11ч / 11 ч
-    m = re.search(r"\b(\d{1,2})\s*ч\b", s)
-    if m:
-        hh = int(m.group(1))
-        if 0 <= hh <= 23:
-            return hh, 0
-
-    # "в 11" → 11:00
-    m = re.search(r"\bв\s+(\d{1,2})(?!\d)", s)
-    if m:
-        hh = int(m.group(1))
-        if 0 <= hh <= 23:
-            return hh, 0
-
+    for rx, (h, m) in _TIME_PATTERNS:
+        if rx.search(s):
+            return h, m
     return None
-
 
 
 def _parse_when_ru(text: str, tz_name: str) -> datetime | None:
@@ -304,7 +329,6 @@ def _parse_when_ru(text: str, tz_name: str) -> datetime | None:
     return None
 
 
-
 # ----- интенты -----
 
 def handle_zoom_intents(zoom: ZoomClient, text: str) -> str | None:
@@ -344,7 +368,7 @@ def handle_zoom_intents(zoom: ZoomClient, text: str) -> str | None:
             # вернём детальнейшую ошибку Zoom, если что-то с правами/почтой
             return f"❌ Zoom API: {e.response.status_code} {e.response.text}"
 
-        when_str = when.astimezone(pytz.timezone(zoom.tz)).strftime("%d.%m.%Y %H:%M")
+        when_str = when.astimezone(pytz.timezone(zoom.tz)).strftime("%d.%м.%Y %H:%M")
         pwd = f"\nПароль: {data.get('password')}" if data.get('password') else ""
         return (
             f"✅ Встреча «{topic}» создана на {when_str} ({zoom.tz}).\n"

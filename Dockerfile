@@ -4,9 +4,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем всё нужное приложение
+# Копируем код приложения
 COPY app.py .
 COPY zoom_client.py .
+COPY telemost_client.py .   # <— ЭТОГО НЕ ХВАТАЛО
 COPY static ./static
 
 ENV PYTHONUNBUFFERED=1

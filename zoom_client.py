@@ -4,53 +4,9 @@ import re
 from datetime import datetime, timedelta
 import requests
 import pytz
-import dateparser  # можно оставить, но в этом файле мы не используем
-
-# =========================
-# БРУТ-ФОРС ПО МИНУТАМ СУТОК
-# =========================
-
-# пробельные символы: обычный \s, неразрывный NBSP, узкий, тонкий
-_SPACE_CLASS = r"[\s\u00A0\u202F\u2009]"
-
-def _build_time_patterns():
-    """
-    Готовим список кортежей (compiled_regex, (hour, minute)).
-    Покрываем форматы:
-      - HH:MM, H:MM
-      - HH-MM, H-MM
-      - HH<space>MM, H<space>MM (включая «невидимые» пробелы)
-    ТОЧКУ НЕ ИСПОЛЬЗУЕМ (чтобы не путать с датами dd.mm.yyyy).
-    """
-    pats = []
-    for h in range(24):
-        hh = f"{h:02d}"    # 00..23
-        h1 = str(h)        # 0..23 (без ведущего нуля)
-        for m in range(60):
-            mm = f"{m:02d}"
-
-            fmt_strs = [
-                rf"\b{hh}:{mm}\b",
-                rf"\b{h1}:{mm}\b" if h1 != hh else None,
-
-                rf"\b{hh}-{mm}\b",
-                rf"\b{h1}-{mm}\b" if h1 != hh else None,
-
-                rf"\b{hh}{_SPACE_CLASS}+{mm}\b",
-                rf"\b{h1}{_SPACE_CLASS}+{mm}\b" if h1 != hh else None,
-            ]
-            for s in fmt_strs:
-                if s:
-                    pats.append((re.compile(s, re.IGNORECASE), (h, m)))
-    return pats
-
-# Предкомпилируем один раз при импорте
-_TIME_PATTERNS = _build_time_patterns()
+import dateparser
 
 
-# ===============
-# КЛАСС ZOOM API
-# ===============
 class ZoomClient:
     TOKEN_URL = "https://zoom.us/oauth/token"
     API_BASE = "https://api.zoom.us/v2"
@@ -127,7 +83,7 @@ class ZoomClient:
     def delete_meeting(self, meeting_id: str) -> bool:
         r = requests.delete(
             f"{self.API_BASE}/meetings/{meeting_id}",
-            headers=self._headers()},
+            headers=self._headers(),
             timeout=20,
         )
         if r.status_code not in (200, 204):
@@ -135,9 +91,7 @@ class ZoomClient:
         return True
 
 
-# =====================
-# УТИЛИТЫ ДЛЯ ОБРАБОТКИ
-# =====================
+# ----- утилиты для чата -----
 
 def _fmt_meetings(items: list[dict], tz_name: str) -> str:
     if not items:
@@ -163,31 +117,30 @@ MONTHS_RU = {
 
 def _strip_trailing_timestamp(text: str) -> str:
     """
-    Срезаем хвост 'HH:MM' / 'HH-MM' / 'HH MM' ТОЛЬКО если это второе (или дальше) время
+    Срезаем хвост '15:12' / '15 12' / '15-12' ТОЛЬКО если это второе (или дальше) время
     в строке и стоит в самом конце. Если время одно — не трогаем.
     """
     if not text:
         return text
-    pat = rf"\b\d{{1,2}}(?::|-|{_SPACE_CLASS})\d{{2}}\b"
-    matches = list(re.finditer(pat, text))
-    if len(matches) >= 2 and re.search(pat + r"\s*$", text):
+    pattern = r"\b\d{1,2}[:\.\- ]\d{2}\b"
+    matches = list(re.finditer(pattern, text))
+    if len(matches) >= 2 and re.search(pattern + r"\s*$", text):
         last = matches[-1]
         return text[:last.start()].rstrip()
     return text
 
+
+
 def _normalize_time_tokens(s: str) -> str:
-    """
-    Минимальная нормализация:
-      - приводим «невидимые» пробелы к обычному
-      - '14ч' -> '14:00'
-      - 'в 14' -> 'в 14:00' (не трогаем 'в 14:30')
-    Формы 'HH MM', 'HH:MM', 'HH-MM' не трогаем — их ловит брут-форс.
-    """
-    if not s:
-        return s
-    s = s.replace("\u202f", " ").replace("\u00a0", " ").replace("\u2009", " ")
+    # 17 00, 17-00, 17.00 → 17:00
+    s = re.sub(r"\b(\d{1,2})[\s\.\-:,](\d{2})\b", r"\1:\2", s)
+    # 14ч → 14:00
     s = re.sub(r"\b(\d{1,2})\s*ч\b", r"\1:00", s)
-    s = re.sub(r"\bв\s+(\d{1,2})(?![:\d])", r"в \1:00", s)
+    # "в 14" → "в 14:00"
+    s = re.sub(r"\bв\s+(\d{1,2})(?!:)", r"в \1:00", s)
+    # если есть сегодня/завтра/послезавтра без времени — добавим 10:00 по умолчанию
+    if re.search(r"\b(сегодня|завтра|послезавтра)\b", s) and not re.search(r"\d{1,2}:\d{2}", s):
+        s += " в 10:00"
     return s
 
 def _extract_topic(text: str) -> str | None:
@@ -240,32 +193,27 @@ def _parse_explicit_date(text: str, base: datetime) -> datetime | None:
 
 def _extract_time(text: str) -> tuple[int, int] | None:
     """
-    Брут-форс: ищем любую из 1440 минут суток в типовых форматах.
-    Возвращаем (часы, минуты) при первом совпадении.
-    Также поддерживаем '11ч' и 'в 11' -> ':00'.
+    Извлекаем время. Поддерживает: 11:00, 11.00, 11-00, '11 00', '11ч', 'в 11', 'в 11 утра/вечера'.
+    Не путает '06.09.2025' с '06:09'.
     """
-    if not text:
-        return None
+    s = text.lower()
 
-    # нормализуем «невидимые» пробелы
-    s = (text.replace("\u202f", " ")
-             .replace("\u00a0", " ")
-             .replace("\u2009", " "))
+    # 11:00 / 11.00 / 11-00 / 11 00 (но не часть dd.mm.yyyy: после минут — конец слова/строки)
+    m = re.search(r"\b(\d{1,2})[:\.\- ](\d{2})\b(?!\.)", s)
+    if m:
+        hh, mm = int(m.group(1)), int(m.group(2))
+        if 0 <= hh <= 23 and 0 <= mm <= 59:
+            return hh, mm
 
-    # минута-в-минуту
-    for rx, (h, m) in _TIME_PATTERNS:
-        if rx.search(s):
-            return h, m
-
-    # «11ч» / «11 ч»
+    # 11ч / 11 ч
     m = re.search(r"\b(\d{1,2})\s*ч\b", s)
     if m:
         hh = int(m.group(1))
         if 0 <= hh <= 23:
             return hh, 0
 
-    # «в 11»
-    m = re.search(r"\bв\s+(\d{1,2})(?!\d)", s.lower())
+    # "в 11" → 11:00
+    m = re.search(r"\bв\s+(\d{1,2})(?!\d)", s)
     if m:
         hh = int(m.group(1))
         if 0 <= hh <= 23:
@@ -274,17 +222,18 @@ def _extract_time(text: str) -> tuple[int, int] | None:
     return None
 
 
+
 def _parse_when_ru(text: str, tz_name: str) -> datetime | None:
     """
-    Детерминированный парсинг БЕЗ dateparser.
+    Полностью детерминированный парсинг БЕЗ dateparser.
     Правила:
-      - есть дата и время → склеиваем;
-      - есть только дата → 10:00;
-      - есть только время → СЕГОДНЯ в это время (без автопереноса «на завтра»).
+      - есть дата и время → склеиваем
+      - есть только дата → 10:00
+      - есть только время → сегодня в это время; если уже прошло — завтра
     """
     s_orig = text or ""
     s = _strip_trailing_timestamp(s_orig)
-    s = _normalize_time_tokens(s)
+    s = _normalize_time_tokens(s)  # '16 50' → '16:50', '14ч' → '14:00'
     s_low = s.lower()
 
     tz = pytz.timezone(tz_name)
@@ -333,22 +282,30 @@ def _parse_when_ru(text: str, tz_name: str) -> datetime | None:
 
     # --- Комбинация ---
     if day and tm:
-        return day.replace(hour=tm[0], minute=tm[1])
+        dt = day.replace(hour=tm[0], minute=tm[1])
+        # если дата была 'dd.mm' (без года) и уже прошла — перенесём на следующий год
+        if dt < now and re.search(r"\b\d{1,2}\.\d{1,2}\b", s_low) and not re.search(r"\b\d{1,2}\.\d{1,2}\.\d{4}\b", s_low):
+            try:
+                dt = dt.replace(year=dt.year + 1)
+            except ValueError:
+                pass
+        return dt
 
     if day and not tm:
         return day.replace(hour=10, minute=0)
 
     if not day and tm:
-        # ВАЖНО: без автопереноса «на завтра»
-        return now.replace(hour=tm[0], minute=tm[1], second=0, microsecond=0)
+        dt = now.replace(hour=tm[0], minute=tm[1], second=0, microsecond=0)
+        if dt <= now:
+            dt = dt + timedelta(days=1)
+        return dt
 
     # ничего не разобрали
     return None
 
 
-# ===========================
-# ИНТЕНТЫ ДЛЯ ЧАТ-ОБРАБОТЧИКА
-# ===========================
+
+# ----- интенты -----
 
 def handle_zoom_intents(zoom: ZoomClient, text: str) -> str | None:
     original_text = text or ""
@@ -378,13 +335,13 @@ def handle_zoom_intents(zoom: ZoomClient, text: str) -> str | None:
     # создание
     if re.search(r"\b(создай|создать|сделай|запланируй)\b.*\bвстреч[ауые]?\b", t) \
        or (("в зум" in t or "в zoom" in t) and "встреч" in t):
-
         when = _parse_when_ru(original_text, zoom.tz) or datetime.now(pytz.timezone(zoom.tz)).replace(minute=0, second=0, microsecond=0)
         topic = _extract_topic(original_text) or "Встреча"
 
         try:
             data = zoom.create_meeting(topic, when, 60)
         except requests.HTTPError as e:
+            # вернём детальнейшую ошибку Zoom, если что-то с правами/почтой
             return f"❌ Zoom API: {e.response.status_code} {e.response.text}"
 
         when_str = when.astimezone(pytz.timezone(zoom.tz)).strftime("%d.%m.%Y %H:%M")

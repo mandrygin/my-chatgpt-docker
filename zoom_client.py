@@ -6,6 +6,12 @@ import requests
 import pytz
 import dateparser
 
+def handle_zoom_intents(zoom: ZoomClient, text: str) -> str | None:
+    t = (text or "").lower()
+    # если пользователь явно просит ТЕЛЕМОСТ — не трогаем Zoom
+    if "телемост" in t:
+        return None
+    # ... остальная логика
 
 class ZoomClient:
     TOKEN_URL = "https://zoom.us/oauth/token"

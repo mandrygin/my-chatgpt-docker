@@ -130,15 +130,13 @@ def _strip_trailing_timestamp(text: str) -> str:
     return text
 
 def _normalize_time_tokens(s: str) -> str:
-    # 17 00, 17-00, 17.00 → 17:00
-    s = re.sub(r"\b(\d{1,2})[\s\.\-:,](\d{2})\b", r"\1:\2", s)
-    # 14ч → 14:00
+    # 1) нормализуем «невидимые» пробелы в обычный
+    s = (s or "").replace("\u202f", " ").replace("\u00a0", " ").replace("\u2009", " ")
+    # 2) 17 15 / 17-15 / 17.15 / 17:15 -> 17:15
+    s = re.sub(r"\b(\d{1,2})[\s\.\-:](\d{2})\b", r"\1:\2", s)
+    # 3) 14ч -> 14:00
     s = re.sub(r"\b(\d{1,2})\s*ч\b", r"\1:00", s)
-    # "в 14" → "в 14:00"
-    s = re.sub(r"\bв\s+(\d{1,2})(?!:)", r"в \1:00", s)
-    # если есть сегодня/завтра/послезавтра без времени — добавим 10:00 по умолчанию
-    if re.search(r"\b(сегодня|завтра|послезавтра)\b", s) and not re.search(r"\d{1,2}:\d{2}", s):
-        s += " в 10:00"
+    # ВАЖНО: НЕ трогаем "в 14" -> "в 14:00" здесь! Это ломало "в 15 15".
     return s
 
 def _extract_topic(text: str) -> str | None:
@@ -231,20 +229,36 @@ _TIME_PATTERNS = _build_time_patterns()
 
 def _extract_time(text: str) -> tuple[int, int] | None:
     """
-    Брут-форс: ищем любую из 1440 минут суток в типовых форматах.
-    Возвращаем (часы, минуты) при первом совпадении.
+    Брут-форс: ищем любую из 1440 минут суток в форматах HH:MM / HH-MM / HH.MM / HH MM.
+    Также поддерживаем "в 11" -> 11:00 и "11ч" -> 11:00.
     """
     if not text:
         return None
 
-    # Нормализуем «невидимые» пробелы, чтобы соответствовали _SPACE_CLASS
+    # нормализуем «невидимые» пробелы
     s = (text.replace("\u202f", " ")
              .replace("\u00a0", " ")
              .replace("\u2009", " "))
 
+    # 1) полный перебор минут (предкомпилированные паттерны)
     for rx, (h, m) in _TIME_PATTERNS:
         if rx.search(s):
             return h, m
+
+    # 2) "11ч" / "11 ч"
+    m = re.search(r"\b(\d{1,2})\s*ч\b", s)
+    if m:
+        hh = int(m.group(1))
+        if 0 <= hh <= 23:
+            return hh, 0
+
+    # 3) "в 11" -> 11:00
+    m = re.search(r"\bв\s+(\d{1,2})(?!\d)", s.lower())
+    if m:
+        hh = int(m.group(1))
+        if 0 <= hh <= 23:
+            return hh, 0
+
     return None
 
 

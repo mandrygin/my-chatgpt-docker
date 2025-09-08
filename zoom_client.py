@@ -132,16 +132,20 @@ def _strip_trailing_timestamp(text: str) -> str:
 
 
 def _normalize_time_tokens(s: str) -> str:
-    # 17 00, 17-00, 17.00 → 17:00
-    s = re.sub(r"\b(\d{1,2})[\s\.\-:,](\d{2})\b", r"\1:\2", s)
-    # 14ч → 14:00
+    # 1) привести «невидимые» пробелы к обычному
+    s = (s or "").replace("\u202f", " ").replace("\u00a0", " ").replace("\u2009", " ")
+
+    # 2) 17 00 / 17-00 / 17.00 / 17:00 → 17:00 (оставляем : как унифицированный разделитель)
+    s = re.sub(r"\b(\d{1,2})[\s\.\-:](\d{2})\b", r"\1:\2", s)
+
+    # 3) 14ч → 14:00
     s = re.sub(r"\b(\d{1,2})\s*ч\b", r"\1:00", s)
-    # "в 14" → "в 14:00"
+
+    # 4) "в 14" → "в 14:00" (не трогаем "в 14:30")
     s = re.sub(r"\bв\s+(\d{1,2})(?!:)", r"в \1:00", s)
-    # если есть сегодня/завтра/послезавтра без времени — добавим 10:00 по умолчанию
-    if re.search(r"\b(сегодня|завтра|послезавтра)\b", s) and not re.search(r"\d{1,2}:\d{2}", s):
-        s += " в 10:00"
+
     return s
+
 
 def _extract_topic(text: str) -> str | None:
     m = re.search(r"[«\"']([^\"'»]{3,120})[\"'»]", text)
@@ -193,26 +197,28 @@ def _parse_explicit_date(text: str, base: datetime) -> datetime | None:
 
 def _extract_time(text: str) -> tuple[int, int] | None:
     """
-    Извлекаем время. Поддерживает: 11:00, 11.00, 11-00, '11 00', '11ч', 'в 11', 'в 11 утра/вечера'.
-    Не путает '06.09.2025' с '06:09'.
+    Ловим 24ч время с разделителями ':', '-', '.', пробел (включая юникод-пробелы).
+    Защита от dd.mm.yyyy: после минут НЕ должно быть ещё одной точки.
     """
-    s = text.lower()
+    s = (text or "").lower()
+    # обычные и юникод-пробелы: \s, \u00A0 (nbsp), \u202F (узкий), \u2009 (thin)
+    sep = r"[:\-\.\s\u00A0\u202F\u2009]"
 
-    # 11:00 / 11.00 / 11-00 / 11 00 (но не часть dd.mm.yyyy: после минут — конец слова/строки)
-    m = re.search(r"\b(\d{1,2})[:\.\- ](\d{2})\b(?!\.)", s)
+    # 1) HH<sep>MM (после минут не точка, чтобы не спутать dd.mm.yyyy)
+    m = re.search(rf"\b(\d{{1,2}}){sep}(\d{{2}})\b(?!\.)", s)
     if m:
         hh, mm = int(m.group(1)), int(m.group(2))
         if 0 <= hh <= 23 and 0 <= mm <= 59:
             return hh, mm
 
-    # 11ч / 11 ч
+    # 2) 11ч / 11 ч
     m = re.search(r"\b(\d{1,2})\s*ч\b", s)
     if m:
         hh = int(m.group(1))
         if 0 <= hh <= 23:
             return hh, 0
 
-    # "в 11" → 11:00
+    # 3) "в 11" → 11:00
     m = re.search(r"\bв\s+(\d{1,2})(?!\d)", s)
     if m:
         hh = int(m.group(1))
@@ -220,6 +226,7 @@ def _extract_time(text: str) -> tuple[int, int] | None:
             return hh, 0
 
     return None
+
 
 
 

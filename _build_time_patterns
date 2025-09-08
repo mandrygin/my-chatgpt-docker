@@ -22,7 +22,45 @@ class ZoomClient:
         self.tz = tz
         self._access_token = None
         self._exp_ts = 0  # unix-время истечения токена
+# ====== БРУТ-ФОРС ПО МИНУТАМ СУТОК ======
 
+# пробелы: обычный, NBSP, узкий, тонкий
+_SPACE_CLASS = r"[\s\u00A0\u202F\u2009]"
+
+def _build_time_patterns():
+    """
+    Готовим список кортежей (compiled_regex, (hour, minute)).
+    Покрываем форматы: HH:MM, H:MM, HH-MM, H-MM, HH.MM, H.MM, HH MM, H MM.
+    """
+    pats = []
+    for h in range(24):
+        hh = f"{h:02d}"
+        h1 = str(h)               # без ведущего нуля
+        for m in range(60):
+            mm = f"{m:02d}"
+
+            fmt_strs = [
+                rf"\b{hh}:{mm}\b",
+                rf"\b{h1}:{mm}\b" if h1 != hh else None,
+
+                rf"\b{hh}-{mm}\b",
+                rf"\b{h1}-{mm}\b" if h1 != hh else None,
+
+                rf"\b{hh}\.{mm}\b",
+                rf"\b{h1}\.{mm}\b" if h1 != hh else None,
+
+                rf"\b{hh}{_SPACE_CLASS}+{mm}\b",
+                rf"\b{h1}{_SPACE_CLASS}+{mm}\b" if h1 != hh else None,
+            ]
+            for s in fmt_strs:
+                if s is None:
+                    continue
+                pats.append((re.compile(s, re.IGNORECASE), (h, m)))
+    return pats
+
+# Предкомпилируем один раз при импорте
+_TIME_PATTERNS = _build_time_patterns()
+    
     # ---------- внутреннее ----------
     def _get_access_token(self) -> str:
         if self._access_token and time.time() < self._exp_ts - 60:
@@ -197,35 +235,22 @@ def _parse_explicit_date(text: str, base: datetime) -> datetime | None:
 
 def _extract_time(text: str) -> tuple[int, int] | None:
     """
-    Ловим 24ч время с разделителями ':', '-', '.', пробел (включая юникод-пробелы).
-    Защита от dd.mm.yyyy: после минут НЕ должно быть ещё одной точки.
+    Брут-форс: ищем любую из 1440 минут суток в типовых форматах.
+    Возвращаем (часы, минуты) при первом совпадении.
     """
-    s = (text or "").lower()
-    # обычные и юникод-пробелы: \s, \u00A0 (nbsp), \u202F (узкий), \u2009 (thin)
-    sep = r"[:\-\.\s\u00A0\u202F\u2009]"
+    if not text:
+        return None
 
-    # 1) HH<sep>MM (после минут не точка, чтобы не спутать dd.mm.yyyy)
-    m = re.search(rf"\b(\d{{1,2}}){sep}(\d{{2}})\b(?!\.)", s)
-    if m:
-        hh, mm = int(m.group(1)), int(m.group(2))
-        if 0 <= hh <= 23 and 0 <= mm <= 59:
-            return hh, mm
+    # нормализуем «невидимые» пробелы на всякий случай
+    s = (text.replace("\u202f", " ")
+             .replace("\u00a0", " ")
+             .replace("\u2009", " "))
 
-    # 2) 11ч / 11 ч
-    m = re.search(r"\b(\d{1,2})\s*ч\b", s)
-    if m:
-        hh = int(m.group(1))
-        if 0 <= hh <= 23:
-            return hh, 0
-
-    # 3) "в 11" → 11:00
-    m = re.search(r"\bв\s+(\d{1,2})(?!\d)", s)
-    if m:
-        hh = int(m.group(1))
-        if 0 <= hh <= 23:
-            return hh, 0
-
+    for rx, (h, m) in _TIME_PATTERNS:
+        if rx.search(s):
+            return h, m
     return None
+
 
 
 

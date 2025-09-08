@@ -350,14 +350,12 @@ def handle_zoom_intents(zoom: ZoomClient, text: str) -> str | None:
     t = (original_text or "").lower().strip()
 
     # список встреч
-    if (("зум" in t) or ("zoom" in t)) and (
-        re.search(r"\b(список|мои|покажи)\s+встреч", t) or "встречи zoom" in t or "встречи зум" in t
-    ):
+    if re.search(r"\b(список|мои|покажи)\s+встреч", t) or "встречи zoom" in t or "встречи зум" in t:
         items = zoom.list_meetings("upcoming", 20)
         return _fmt_meetings(items, zoom.tz)
 
     # удалить все встречи
-    if (("зум" in t) or ("zoom" in t)) and re.search(r"(отмени|удали)\s+все\s+встреч", t):
+    if re.search(r"(отмени|удали)\s+все\s+встреч", t):
         items = zoom.list_meetings("upcoming", 50)
         if not items:
             return "🗑️ Нет встреч для удаления."
@@ -366,18 +364,17 @@ def handle_zoom_intents(zoom: ZoomClient, text: str) -> str | None:
         return f"🗑️ Удалено {len(items)} встреч."
 
     # удалить по ID
-    if (("зум" in t) or ("zoom" in t)):
-        m = re.search(r"(отмени|удали)\s+встреч[ауые]?\s+(\d{6,})", t)
-        if m:
-            mid = m.group(2)
-            zoom.delete_meeting(mid)
-            return f"🗑️ Встреча **{mid}** отменена."
+    m = re.search(r"(отмени|удали)\s+встреч[ауые]?\s+(\d{6,})", t)
+    if m:
+        mid = m.group(2)
+        zoom.delete_meeting(mid)
+        return f"🗑️ Встреча **{mid}** отменена."
 
     # создание
-    if (("зум" in t) or ("zoom" in t)) and re.search(r"\b(создай|создать|сделай|запланируй)\b.*\bвстреч[ауые]?\b", t):
+    if re.search(r"\b(создай|создать|сделай|запланируй)\b.*\bвстреч[ауые]?\b", t) \
+       or (("в зум" in t or "в zoom" in t) and "встреч" in t):
         when = _parse_when_ru(original_text, zoom.tz) or datetime.now(pytz.timezone(zoom.tz)).replace(minute=0, second=0, microsecond=0)
         topic = _extract_topic(original_text) or "Встреча"
-
 
         try:
             data = zoom.create_meeting(topic, when, 60)

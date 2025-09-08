@@ -4,13 +4,15 @@ import re
 from datetime import datetime, timedelta
 import pytz
 import requests
+from typing import Optional, Tuple, List, Dict
+
 
 class TelemostClient:
     """
-    Минимальный клиент Яндекс Телемост по OAuth.
-    Обязательная переменная окружения: YANDEX_OAUTH_TOKEN.
+    Минимальный клиент Яндекс.Телемост по OAuth.
+    Обязательная переменная окружения: YANDEX_OAUTH_TOKEN (значение access_token).
     """
-    API_BASE = "https://api.telemost.yandex.net"   # TODO: проверь в доке точный хост/префикс
+    API_BASE = "https://cloud-api.yandex.net/v1/telemost-api"
 
     def __init__(self, tz: str = "Europe/Moscow"):
         token = os.getenv("YANDEX_OAUTH_TOKEN")
@@ -19,61 +21,53 @@ class TelemostClient:
         self.tz = tz
         self._token = token
 
-    def _headers(self):
+    def _headers(self) -> Dict[str, str]:
         return {
             "Authorization": f"OAuth {self._token}",
             "Content-Type": "application/json",
+            "Accept": "application/json",
         }
 
-    def create_meeting(self, title: str, when_dt: datetime, duration_min: int = 60) -> dict:
+    def create_meeting(self, title: str, when_dt: datetime, duration_min: int = 60) -> Dict:
         """
-        Создание встречи.
-        TODO: подставь точный путь и поля из оф. спецификации Телемоста.
+        Создает комнату Телемоста (в API нет полей start_time/duration).
+        Мы храним/показываем время только в ответе ассистента.
         """
-        # пример: локальное время -> ISO с таймзоной
-        tz = pytz.timezone(self.tz)
-        local = tz.localize(when_dt) if when_dt.tzinfo is None else when_dt.astimezone(tz)
-        start_iso = local.isoformat()
-
         payload = {
-            "title": title or "Встреча",
-            "start_time": start_iso,         # TODO: уточни имя поля
-            "duration": duration_min,        # TODO: уточни имя поля
-            # "settings": {...}               # если требуется
+            # PUBLIC / ORGANIZATION / ADMINS — кого пропускать без модерации
+            "waiting_room_level": "PUBLIC"
+            # Можно добавлять cohosts/live_stream и т.д., если нужно
         }
-
-        # пример эндпойнта:
-        url = f"{self.API_BASE}/v2/conferences"  # TODO: уточни точный путь
+        url = f"{self.API_BASE}/conferences"
         r = requests.post(url, headers=self._headers(), json=payload, timeout=20)
         if not r.ok:
             raise requests.HTTPError(f"{r.status_code} {r.text}")
-        return r.json()
+        data = r.json()
 
-    def list_meetings(self) -> list[dict]:
-        """
-        Получить список ближайших встреч.
-        TODO: подставь верный эндпойнт/параметры из доки.
-        """
-        url = f"{self.API_BASE}/v2/conferences"  # TODO
+        # Добавим «косметику», чтобы дальше было удобно форматировать ответ
+        data.setdefault("title", title or "Встреча")
+        data.setdefault("when_local", when_dt.astimezone(pytz.timezone(self.tz)).isoformat())
+        return data
+
+    def list_meetings(self) -> List[Dict]:
+        """Список конференций (комнат)."""
+        url = f"{self.API_BASE}/conferences"
         r = requests.get(url, headers=self._headers(), timeout=20)
         if not r.ok:
             raise requests.HTTPError(f"{r.status_code} {r.text}")
         data = r.json()
-        # верни список; при необходимости преобразуй структуру
-        return data.get("items") or data.get("conferences") or []
+        return data.get("conferences") or data.get("items") or data or []
 
     def delete_meeting(self, meeting_id: str) -> bool:
-        """
-        Удаление встречи по ID.
-        """
-        url = f"{self.API_BASE}/v2/conferences/{meeting_id}"  # TODO
+        """Удаление комнаты по ID."""
+        url = f"{self.API_BASE}/conferences/{meeting_id}"
         r = requests.delete(url, headers=self._headers(), timeout=20)
         if r.status_code not in (200, 204):
             raise requests.HTTPError(f"{r.status_code} {r.text}")
         return True
 
 
-# ===== утилиты/интенты (парсинг текста как в zoom_client) =====
+# ===== Парсинг времени (упрощенный, как в zoom_client) =====
 
 _MONTHS_RU = {
     "январ": 1, "феврал": 2, "март": 3, "апрел": 4, "ма": 5,
@@ -81,8 +75,8 @@ _MONTHS_RU = {
 }
 _SPACE_CLASS = r"[\s\u00A0\u202F\u2009]"
 
-def _extract_time(text: str):
-    s = (text or "").lower().replace("\u202f"," ").replace("\u00a0"," ").replace("\u2009"," ")
+def _extract_time(text: str) -> Optional[Tuple[int, int]]:
+    s = (text or "").lower().replace("\u202f", " ").replace("\u00a0", " ").replace("\u2009", " ")
     m = re.search(rf"\b(\d{{1,2}})[:\-\.{_SPACE_CLASS}](\d{{2}})\b(?!\.)", s)
     if m:
         h, mm = int(m.group(1)), int(m.group(2))
@@ -100,7 +94,7 @@ def _extract_time(text: str):
             return h, 0
     return None
 
-def _parse_explicit_date(text: str, now: datetime):
+def _parse_explicit_date(text: str, now: datetime) -> Optional[datetime]:
     t = (text or "").lower()
     m = re.search(r"\b(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?\b", t)
     if m:
@@ -116,12 +110,11 @@ def _parse_explicit_date(text: str, now: datetime):
         if mon:
             return now.replace(year=y, month=mon, day=d, hour=0, minute=0, second=0, microsecond=0)
     if "послезавтра" in t: return now + timedelta(days=2)
-    if "завтра" in t:       return now + timedelta(days=1)
+    if "завтра" in t:      return now + timedelta(days=1)
     if "сегодня" in t:     return now
     return None
 
-def _parse_when(text: str, tz_name: str) -> datetime | None:
-    import pytz
+def _parse_when(text: str, tz_name: str) -> Optional[datetime]:
     tz = pytz.timezone(tz_name)
     now = datetime.now(tz)
     day = _parse_explicit_date(text, now)
@@ -134,40 +127,44 @@ def _parse_when(text: str, tz_name: str) -> datetime | None:
         return dt
     return None
 
-def _fmt(items: list[dict], tz_name: str) -> str:
+def _fmt(items: List[Dict], tz_name: str) -> str:
     if not items:
         return "🗓️ Встреч нет."
     tz = pytz.timezone(tz_name)
-    out = ["🗓️ Ближайшие встречи:"]
+    out = ["🗓️ Комнаты Телемоста:"]
     for i, m in enumerate(items, 1):
-        # подстрой под фактические поля API
-        start = m.get("start_time") or m.get("start") or m.get("when")
+        # Телемост не хранит время начала — покажем то, что есть
+        # (если в ответе от API появится поле со временем — красиво отформатируем)
         topic = m.get("title") or m.get("topic") or "Без темы"
-        mid   = m.get("id") or m.get("meeting_id")
-        when = "—"
-        if start:
-            try:
-                dt = datetime.fromisoformat(str(start).replace("Z","+00:00")).astimezone(tz)
-                when = dt.strftime("%d.%m.%Y %H:%M")
-            except Exception:
-                when = str(start)
-        out.append(f"{i}. {topic} • ID: {mid} • {when}")
+        mid   = m.get("id") or m.get("meeting_id") or "—"
+        join  = m.get("join_url") or m.get("link") or m.get("url") or ""
+        out.append(f"{i}. {topic} • ID: {mid} • {join}")
     return "\n".join(out)
 
-def handle_telemost_intents(tm: TelemostClient, text: str) -> str | None:
+
+# ===== Интенты ассистента (строго по слову «телемост») =====
+
+def handle_telemost_intents(tm: TelemostClient, text: str) -> Optional[str]:
     t = (text or "").lower().strip()
 
+    # Гейт: без слова "телемост" не реагируем
+    if "телемост" not in t:
+        return None
+
+    # список
     if re.search(r"\b(список|мои|покажи)\s+встреч", t):
         items = tm.list_meetings()
         return _fmt(items, tm.tz)
 
-    m = re.search(r"(отмени|удали)\s+встреч[ауые]?\s+(\d+)", t)
+    # удалить по ID
+    m = re.search(r"(отмени|удали)\s+встреч[ауые]?\s+([A-Za-z0-9_-]+)", t)
     if m:
         mid = m.group(2)
         tm.delete_meeting(mid)
-        return f"🗑️ Встреча **{mid}** отменена (Телемост)."
+        return f"🗑️ Встреча **{mid}** удалена (Телемост)."
 
-    if re.search(r"\b(создай|создать|сделай|запланируй)\b.*\bвстреч[ауые]?\b", t) or (("в телемост" in t) and "встреч" in t):
+    # создать
+    if re.search(r"\b(создай|создать|сделай|запланируй)\b.*\bвстреч[ауые]?\b", t):
         when = _parse_when(text, tm.tz)
         title = "Встреча"
         if not when:
@@ -176,6 +173,10 @@ def handle_telemost_intents(tm: TelemostClient, text: str) -> str | None:
         join = data.get("join_url") or data.get("link") or data.get("url") or "—"
         mid  = data.get("id") or data.get("meeting_id") or "—"
         when_str = when.strftime("%d.%m.%Y %H:%M")
-        # компактный ответ с гиперссылкой
-        return f"✅ Встреча «{title}» на {when_str}.<br>🔗 <a href=\"{join}\" target=\"_blank\" rel=\"noopener\">Перейти в Телемост</a><br>ID: {mid}"
+        return (
+            f"✅ Встреча «{title}» на {when_str}.<br>"
+            f"🔗 <a href=\"{join}\" target=\"_blank\" rel=\"noopener\">Перейти в Телемост</a><br>"
+            f"ID: {mid}"
+        )
+
     return None

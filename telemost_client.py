@@ -5,11 +5,11 @@ import pytz
 from datetime import datetime, timedelta
 
 class TelemostClient:
-    """
-    Простой клиент API Яндекс Телемост.
-    Требуется переменная окружения YANDEX_OAUTH_TOKEN (OAuth-токен организации).
-    """
-    API_BASE = "https://api.telemost.yandex.net/v1"
+    # было:
+    # API_BASE = "https://api.telemost.yandex.net/v1"
+    # правильно:
+    API_BASE = "https://cloud-api.yandex.net/v1/telemost-api"
+
 
     def __init__(self, tz: str = "Europe/Moscow"):
         self.oauth_token = os.getenv("YANDEX_OAUTH_TOKEN")

@@ -22,6 +22,7 @@ services:
 
       # === Telemost (ВАЖНО) ===
       YANDEX_OAUTH_TOKEN: "${YANDEX_OAUTH_TOKEN}"   # <— твой y0_... токен
+      YANDEX_ORG_ID: "${YANDEX_ORG_ID}"
       TELEMOST_TZ: "${TELEMOST_TZ:-Europe/Moscow}"
     restart: unless-stopped
     volumes:

@@ -347,10 +347,14 @@ def _parse_when_ru(text: str, tz_name: str) -> datetime | None:
 
 def handle_zoom_intents(zoom: ZoomClient, text: str) -> str | None:
     original_text = text or ""
-    t = (original_text or "").lower().strip()
+    t = original_text.lower().strip()
+
+    # --- добавляем фильтр по ключевым словам ---
+    if not re.search(r"\b(zoom|зум\w*)\b", t):
+        return None
 
     # список встреч
-    if re.search(r"\b(список|мои|покажи)\s+встреч", t) or "встречи zoom" in t or "встречи зум" in t:
+    if re.search(r"\b(список|мои|покажи)\s+встреч", t):
         items = zoom.list_meetings("upcoming", 20)
         return _fmt_meetings(items, zoom.tz)
 
@@ -370,19 +374,19 @@ def handle_zoom_intents(zoom: ZoomClient, text: str) -> str | None:
         zoom.delete_meeting(mid)
         return f"🗑️ Встреча **{mid}** отменена."
 
-    # создание
-    if re.search(r"\b(создай|создать|сделай|запланируй)\b.*\bвстреч[ауые]?\b", t) \
-       or (("в зум" in t or "в zoom" in t) and "встреч" in t):
-        when = _parse_when_ru(original_text, zoom.tz) or datetime.now(pytz.timezone(zoom.tz)).replace(minute=0, second=0, microsecond=0)
+    # создание встречи
+    if re.search(r"\b(создай|создать|сделай|запланируй)\b.*\bвстреч", t):
+        when = _parse_when_ru(original_text, zoom.tz) or datetime.now(
+            pytz.timezone(zoom.tz)
+        ).replace(minute=0, second=0, microsecond=0)
         topic = _extract_topic(original_text) or "Встреча"
 
         try:
             data = zoom.create_meeting(topic, when, 60)
         except requests.HTTPError as e:
-            # вернём детальнейшую ошибку Zoom, если что-то с правами/почтой
             return f"❌ Zoom API: {e.response.status_code} {e.response.text}"
 
-        when_str = when.astimezone(pytz.timezone(zoom.tz)).strftime("%d.%м.%Y %H:%M")
+        when_str = when.astimezone(pytz.timezone(zoom.tz)).strftime("%d.%m.%Y %H:%M")
         pwd = f"\nПароль: {data.get('password')}" if data.get('password') else ""
         return (
             f"✅ Встреча «{topic}» создана на {when_str} ({zoom.tz}).\n"
@@ -390,3 +394,4 @@ def handle_zoom_intents(zoom: ZoomClient, text: str) -> str | None:
         )
 
     return None
+

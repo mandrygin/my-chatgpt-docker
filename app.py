@@ -40,7 +40,7 @@ if all([ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET, ZOOM_HOST_EMAIL]):
 # ===== Инициализация Яндекс Телемоста (мягко) =====
 telemost = None
 YANDEX_OAUTH_TOKEN = os.getenv("YANDEX_OAUTH_TOKEN")
-YANDEX_ORG_ID      = os.getenv("YANDEX_ORG_ID")  # <-- добавили
+YANDEX_ORG_ID      = os.getenv("YANDEX_ORG_ID")  # обязателен для Telemost API
 
 try:
     if YANDEX_OAUTH_TOKEN and YANDEX_ORG_ID:

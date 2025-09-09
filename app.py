@@ -5,8 +5,10 @@ from datetime import datetime
 
 # ----- Zoom -----
 from zoom_client import ZoomClient, handle_zoom_intents
+# ----- Telemost -----
+from telemost_client import TelemostClient, handle_telemost_intents
 
-# ===== Настройки LLM =====
+# ===== Настройки LLM (через OpenRouter) =====
 API_KEY  = os.environ.get("OPENAI_API_KEY", "")
 MODEL    = os.environ.get("MODEL", "deepseek/deepseek-chat")
 API_URL  = os.environ.get("OPENROUTER_URL", "https://openrouter.ai/api/v1/chat/completions")
@@ -15,12 +17,12 @@ APP_NAME = os.environ.get("APP_NAME", "help-gpt")
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 
-# ===== Инициализация Zoom (мягко — если переменные не заданы, просто выключим Zoom) =====
-ZOOM_ACCOUNT_ID   = os.getenv("ZOOM_ACCOUNT_ID")
-ZOOM_CLIENT_ID    = os.getenv("ZOOM_CLIENT_ID")
-ZOOM_CLIENT_SECRET= os.getenv("ZOOM_CLIENT_SECRET")
-ZOOM_HOST_EMAIL   = os.getenv("ZOOM_HOST_EMAIL")
-ZOOM_TZ           = os.getenv("ZOOM_TZ", "Europe/Moscow")
+# ===== Инициализация Zoom (мягко) =====
+ZOOM_ACCOUNT_ID    = os.getenv("ZOOM_ACCOUNT_ID")
+ZOOM_CLIENT_ID     = os.getenv("ZOOM_CLIENT_ID")
+ZOOM_CLIENT_SECRET = os.getenv("ZOOM_CLIENT_SECRET")
+ZOOM_HOST_EMAIL    = os.getenv("ZOOM_HOST_EMAIL")
+ZOOM_TZ            = os.getenv("ZOOM_TZ", "Europe/Moscow")
 
 zoom = None
 if all([ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET, ZOOM_HOST_EMAIL]):
@@ -33,8 +35,15 @@ if all([ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET, ZOOM_HOST_EMAIL]):
             tz=ZOOM_TZ,
         )
     except Exception as e:
-        # Не валим приложение, просто логируем
         print(f"[Zoom] Failed to init ZoomClient: {e}")
+
+# ===== Инициализация Яндекс Телемоста (мягко) =====
+telemost = None
+try:
+    if os.getenv("YANDEX_OAUTH_TOKEN"):
+        telemost = TelemostClient(tz=ZOOM_TZ)
+except Exception as e:
+    print(f"[Telemost] Failed to init TelemostClient: {e}")
 
 # ===== Роуты =====
 @app.get("/")
@@ -45,13 +54,22 @@ def index():
 def health():
     return jsonify({"ok": True})
 
-# Опционально: быстро проверить, что ключи Zoom работают
 @app.get("/debug/zoom")
 def debug_zoom():
     if not zoom:
         return {"ok": False, "error": "Zoom not configured"}, 400
     try:
         items = zoom.list_meetings("upcoming", 1)
+        return {"ok": True, "count": len(items)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}, 500
+
+@app.get("/debug/telemost")
+def debug_telemost():
+    if not telemost:
+        return {"ok": False, "error": "Telemost not configured"}, 400
+    try:
+        items = telemost.list_meetings()
         return {"ok": True, "count": len(items)}
     except Exception as e:
         return {"ok": False, "error": str(e)}, 500
@@ -63,22 +81,30 @@ def chat():
     if not msg:
         return jsonify({"error": "empty"}), 400
 
-    # 👉 СНАЧАЛА пробуем команды Zoom (создать/список/отменить)
+    # 1) Телемост — реагирует только при слове "телемост"
+    if telemost:
+        try:
+            tm_reply = handle_telemost_intents(telemost, msg)
+            if tm_reply:
+                return jsonify({"reply": tm_reply})
+        except Exception as e:
+            return jsonify({"reply": f"❌ Telemost: {e}"}), 200
+
+    # 2) Zoom — реагирует только при словах zoom/зум/зуме/зума
     if zoom:
         try:
             zoom_reply = handle_zoom_intents(zoom, msg)
             if zoom_reply:
                 return jsonify({"reply": zoom_reply})
         except Exception as e:
-            # Покажем аккуратную ошибку, но не ломаем чат
             return jsonify({"reply": f"❌ Zoom: {e}"}), 200
 
-    # Простой хелпер без модели
+    # 3) Простая утилита: текущее время
     if "время" in msg.lower() or "дата" in msg.lower():
         now = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
         return jsonify({"reply": f"Сейчас {now} по системному времени сервера ⏰"})
 
-    # ===== Вызов LLM (OpenRouter) =====
+    # 4) Ответ через LLM
     headers = {
         "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json",
@@ -104,5 +130,4 @@ def chat():
 
 
 if __name__ == "__main__":
-     app.run(host="0.0.0.0", port=8080)
-    # Убедись, что MODEL задан корректн
+    app.run(host="0.0.0.0", port=8080)

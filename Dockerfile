@@ -5,6 +5,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Копируем всё нужное приложение
+COPY telemost_client.py .
 COPY app.py .
 COPY zoom_client.py .
 COPY static ./static

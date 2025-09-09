@@ -39,9 +39,15 @@ if all([ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET, ZOOM_HOST_EMAIL]):
 
 # ===== Инициализация Яндекс Телемоста (мягко) =====
 telemost = None
+YANDEX_OAUTH_TOKEN = os.getenv("YANDEX_OAUTH_TOKEN")
+YANDEX_ORG_ID      = os.getenv("YANDEX_ORG_ID")  # <-- добавили
+
 try:
-    if os.getenv("YANDEX_OAUTH_TOKEN"):
+    if YANDEX_OAUTH_TOKEN and YANDEX_ORG_ID:
         telemost = TelemostClient(tz=ZOOM_TZ)
+    else:
+        print(f"[Telemost] Skipped init. YANDEX_OAUTH_TOKEN set: {bool(YANDEX_OAUTH_TOKEN)}, "
+              f"YANDEX_ORG_ID set: {bool(YANDEX_ORG_ID)}")
 except Exception as e:
     print(f"[Telemost] Failed to init TelemostClient: {e}")
 

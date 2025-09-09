@@ -5,25 +5,31 @@ import pytz
 from datetime import datetime, timedelta
 
 class TelemostClient:
-    # было:
-    # API_BASE = "https://api.telemost.yandex.net/v1"
-    # правильно:
+    """
+    Клиент API Яндекс Телемост.
+    Требуется:
+      - YANDEX_OAUTH_TOKEN  — OAuth-токен пользователя из вашей организации 360
+      - YANDEX_ORG_ID       — ID организации (из админки 360)
+    """
     API_BASE = "https://cloud-api.yandex.net/v1/telemost-api"
-
 
     def __init__(self, tz: str = "Europe/Moscow"):
         self.oauth_token = os.getenv("YANDEX_OAUTH_TOKEN")
+        self.org_id = os.getenv("YANDEX_ORG_ID")
         self.tz = tz
         if not self.oauth_token:
-            raise ValueError("❌ Нет OAuth токена. Добавь YANDEX_OAUTH_TOKEN в переменные окружения.")
+            raise ValueError("❌ Добавь YANDEX_OAUTH_TOKEN в переменные окружения.")
+        if not self.org_id:
+            raise ValueError("❌ Добавь YANDEX_ORG_ID (см. внизу левого меню админки 360).")
 
-def _headers(self):
-    return {
-        "Authorization": f"OAuth {self.oauth_token}",
-        "X-Org-Id": self.org_id,
-        "Content-Type": "application/json"
-    }
+    def _headers(self):
+        return {
+            "Authorization": f"OAuth {self.oauth_token}",
+            "X-Org-Id": self.org_id,
+            "Content-Type": "application/json",
+        }
 
+    # ---------- API ----------
     def create_meeting(self, title: str, when_dt: datetime, duration_min: int = 60) -> dict:
         tz = pytz.timezone(self.tz)
         local_dt = tz.localize(when_dt) if when_dt.tzinfo is None else when_dt.astimezone(tz)
@@ -51,13 +57,12 @@ def _headers(self):
         return True
 
 
-# ==================== парсинг русского "когда" (минимально автономный) ====================
+# ==================== простой парсер "когда" (RU) ====================
 
 _MONTHS = {
     "январ": 1, "феврал": 2, "март": 3, "апрел": 4, "ма": 5,
     "июн": 6, "июл": 7, "август": 8, "сентябр": 9, "октябр": 10, "ноябр": 11, "декабр": 12
 }
-
 _SPACE = r"[\s\u00A0\u202F\u2009]"
 
 def _extract_topic(text: str) -> str | None:
@@ -71,20 +76,17 @@ def _extract_topic(text: str) -> str | None:
 
 def _extract_time(s: str) -> tuple[int, int] | None:
     s = (s or "").replace("\u202f", " ").replace("\u00a0", " ").replace("\u2009", " ")
-    # HH:MM, H:MM, HH-MM, HH.MM, HH MM
-    m = re.search(rf"\b(\d{{1,2}})[\:\-\.{_SPACE}](\d{{2}})\b", s)
+    m = re.search(rf"\b(\d{{1,2}})[\:\-\.{_SPACE}](\d{{2}})\b", s)  # HH:MM / HH-MM / HH.MM / HH MM
     if m:
         h, mnt = int(m.group(1)), int(m.group(2))
         if 0 <= h <= 23 and 0 <= mnt <= 59:
             return h, mnt
-    # "14ч"
-    m = re.search(r"\b(\d{1,2})\s*ч\b", s)
+    m = re.search(r"\b(\d{1,2})\s*ч\b", s)  # 14ч
     if m:
         hh = int(m.group(1))
         if 0 <= hh <= 23:
             return hh, 0
-    # "в 11"
-    m = re.search(r"\bв\s+(\d{1,2})(?!\d)", s)
+    m = re.search(r"\bв\s+(\d{1,2})(?!\d)", s)  # в 11
     if m:
         hh = int(m.group(1))
         if 0 <= hh <= 23:
@@ -92,7 +94,6 @@ def _extract_time(s: str) -> tuple[int, int] | None:
     return None
 
 def _parse_when_ru(text: str, tz_name: str) -> datetime | None:
-    """Очень простой разбор: сегодня/завтра/послезавтра + явные даты + время."""
     s = (text or "").lower()
     tz = pytz.timezone(tz_name)
     now = datetime.now(tz)
@@ -121,9 +122,7 @@ def _parse_when_ru(text: str, tz_name: str) -> datetime | None:
     if day is None:
         m = re.search(r"\b(\d{1,2})\s+([а-яё]+)(?:\s+(\d{4}))?\b", s)
         if m:
-            d = int(m.group(1))
-            mon_word = m.group(2)
-            y = int(m.group(3) or now.year)
+            d = int(m.group(1)); mon_word = m.group(2); y = int(m.group(3) or now.year)
             mon = next((num for stem, num in _MONTHS.items() if mon_word.startswith(stem)), None)
             if mon:
                 try:
@@ -145,13 +144,13 @@ def _parse_when_ru(text: str, tz_name: str) -> datetime | None:
     return None
 
 
-# ==================== интенты Телемоста (только при слове "телемост") ====================
+# ==================== интенты Телемоста (триггер: слово "телемост") ====================
 
 def handle_telemost_intents(tm: TelemostClient, text: str) -> str | None:
     original = text or ""
     t = original.lower().strip()
 
-    # срабатываем только если упомянут "телемост" (любая форма)
+    # реагируем только если есть слово "телемост"
     if not re.search(r"\bтелемост\w*\b", t):
         return None
 
@@ -174,14 +173,14 @@ def handle_telemost_intents(tm: TelemostClient, text: str) -> str | None:
             lines.append(f"{i}. {m.get('title') or 'Без темы'} • ID: {m.get('id')} • {when}")
         return "🗓️ Ближайшие встречи (Телемост):\n" + "\n".join(lines)
 
-    # удалить все встречи
+    # удалить все
     if re.search(r"(отмени|удали)\s+все\s+встреч", t):
         items = tm.list_meetings()
         for m in items:
             tm.delete_meeting(m["id"])
         return f"🗑️ В Телемосте удалено {len(items)} встреч."
 
-    # удалить по ID (UUID-подобные или строковые ID)
+    # удалить по ID
     m = re.search(r"(отмени|удали)\s+встреч[ауые]?\s+([a-z0-9\-]{6,})", t)
     if m:
         cid = m.group(2)

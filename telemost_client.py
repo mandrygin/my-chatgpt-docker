@@ -17,11 +17,12 @@ class TelemostClient:
         if not self.oauth_token:
             raise ValueError("❌ Нет OAuth токена. Добавь YANDEX_OAUTH_TOKEN в переменные окружения.")
 
-    def _headers(self):
-        return {
-            "Authorization": f"OAuth {self.oauth_token}",
-            "Content-Type": "application/json",
-        }
+def _headers(self):
+    return {
+        "Authorization": f"OAuth {self.oauth_token}",
+        "X-Org-Id": self.org_id,
+        "Content-Type": "application/json"
+    }
 
     def create_meeting(self, title: str, when_dt: datetime, duration_min: int = 60) -> dict:
         tz = pytz.timezone(self.tz)

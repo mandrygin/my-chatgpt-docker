@@ -4,6 +4,9 @@ import requests
 from datetime import datetime
 import pytz
 
+for k in ("HTTP_PROXY","HTTPS_PROXY","http_proxy","https_proxy","ALL_PROXY","all_proxy"):
+    os.environ.pop(k, None)
+
 # ----- Zoom -----
 from zoom_client import ZoomClient, handle_zoom_intents
 # ----- Telemost -----

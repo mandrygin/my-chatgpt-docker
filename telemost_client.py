@@ -1,30 +1,52 @@
 import os
+import time
 import re
 import requests
 import pytz
 from datetime import datetime, timedelta
 
 class TelemostClient:
-    """
-    Клиент API Яндекс Телемост.
-    Требуется:
-      - YANDEX_OAUTH_TOKEN  — OAuth-токен пользователя из вашей организации 360
-      - YANDEX_ORG_ID       — ID организации (из админки 360)
-    """
     API_BASE = "https://cloud-api.yandex.net/v1/telemost-api"
+    TOKEN_URL = "https://oauth.yandex.ru/token"
 
     def __init__(self, tz: str = "Europe/Moscow"):
-        self.oauth_token = os.getenv("YANDEX_OAUTH_TOKEN")
+        self.client_id = os.getenv("YANDEX_CLIENT_ID")
+        self.client_secret = os.getenv("YANDEX_CLIENT_SECRET")
         self.org_id = os.getenv("YANDEX_ORG_ID")
         self.tz = tz
-        if not self.oauth_token:
-            raise ValueError("❌ Добавь YANDEX_OAUTH_TOKEN в переменные окружения.")
-        if not self.org_id:
-            raise ValueError("❌ Добавь YANDEX_ORG_ID (см. внизу левого меню админки 360).")
+
+        if not all([self.client_id, self.client_secret, self.org_id]):
+            raise ValueError("❌ Нужны YANDEX_CLIENT_ID, YANDEX_CLIENT_SECRET и YANDEX_ORG_ID")
+
+        # кэш токена
+        self._access_token = None
+        self._exp_ts = 0
+
+    # ---------- token ----------
+    def _get_access_token(self) -> str:
+        # если токен ещё жив — используем
+        if self._access_token and time.time() < self._exp_ts - 60:
+            return self._access_token
+
+        # берём новый по client_credentials
+        r = requests.post(
+            self.TOKEN_URL,
+            data={
+                "grant_type": "client_credentials",
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+            },
+            timeout=15,
+        )
+        r.raise_for_status()
+        data = r.json()
+        self._access_token = data["access_token"]
+        self._exp_ts = time.time() + int(data.get("expires_in", 3600))
+        return self._access_token
 
     def _headers(self):
         return {
-            "Authorization": f"OAuth {self.oauth_token}",
+            "Authorization": f"OAuth {self._get_access_token()}",
             "X-Org-Id": self.org_id,
             "Content-Type": "application/json",
         }
@@ -39,26 +61,31 @@ class TelemostClient:
             "title": title or "Встреча",
             "start_time": local_dt.isoformat(),
             "end_time": end_dt.isoformat(),
-            "auto_record": False
+            "auto_record": False,
         }
         r = requests.post(f"{self.API_BASE}/conferences", headers=self._headers(), json=payload, timeout=20)
-        r.raise_for_status()
+        try:
+            r.raise_for_status()
+        except requests.HTTPError as e:
+            raise RuntimeError(f"Telemost HTTP {r.status_code}: {r.text}") from e
         return r.json()
 
     def list_meetings(self) -> list[dict]:
         r = requests.get(f"{self.API_BASE}/conferences", headers=self._headers(), timeout=20)
-        r.raise_for_status()
+        try:
+            r.raise_for_status()
+        except requests.HTTPError as e:
+            raise RuntimeError(f"Telemost HTTP {r.status_code}: {r.text}") from e
         return r.json().get("conferences", [])
 
     def delete_meeting(self, conf_id: str) -> bool:
         r = requests.delete(f"{self.API_BASE}/conferences/{conf_id}", headers=self._headers(), timeout=20)
         if r.status_code not in (200, 204):
-            r.raise_for_status()
+            raise RuntimeError(f"Telemost HTTP {r.status_code}: {r.text}")
         return True
 
 
 # ==================== простой парсер "когда" (RU) ====================
-
 _MONTHS = {
     "январ": 1, "феврал": 2, "март": 3, "апрел": 4, "ма": 5,
     "июн": 6, "июл": 7, "август": 8, "сентябр": 9, "октябр": 10, "ноябр": 11, "декабр": 12
@@ -76,17 +103,17 @@ def _extract_topic(text: str) -> str | None:
 
 def _extract_time(s: str) -> tuple[int, int] | None:
     s = (s or "").replace("\u202f", " ").replace("\u00a0", " ").replace("\u2009", " ")
-    m = re.search(rf"\b(\d{{1,2}})[\:\-\.{_SPACE}](\d{{2}})\b", s)  # HH:MM / HH-MM / HH.MM / HH MM
+    m = re.search(rf"\b(\d{{1,2}})[\:\-\.{_SPACE}](\d{{2}})\b", s)
     if m:
         h, mnt = int(m.group(1)), int(m.group(2))
         if 0 <= h <= 23 and 0 <= mnt <= 59:
             return h, mnt
-    m = re.search(r"\b(\d{1,2})\s*ч\b", s)  # 14ч
+    m = re.search(r"\b(\d{1,2})\s*ч\b", s)
     if m:
         hh = int(m.group(1))
         if 0 <= hh <= 23:
             return hh, 0
-    m = re.search(r"\bв\s+(\d{1,2})(?!\d)", s)  # в 11
+    m = re.search(r"\bв\s+(\d{1,2})(?!\d)", s)
     if m:
         hh = int(m.group(1))
         if 0 <= hh <= 23:
@@ -98,7 +125,6 @@ def _parse_when_ru(text: str, tz_name: str) -> datetime | None:
     tz = pytz.timezone(tz_name)
     now = datetime.now(tz)
 
-    # относительные дни
     if "послезавтра" in s:
         day = (now + timedelta(days=2)).replace(hour=0, minute=0, second=0, microsecond=0)
     elif "завтра" in s:
@@ -108,7 +134,6 @@ def _parse_when_ru(text: str, tz_name: str) -> datetime | None:
     else:
         day = None
 
-    # dd.mm(.yyyy)?
     if day is None:
         m = re.search(r"\b(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?\b", s)
         if m:
@@ -118,7 +143,6 @@ def _parse_when_ru(text: str, tz_name: str) -> datetime | None:
             except ValueError:
                 day = None
 
-    # dd <месяц>( yyyy)?
     if day is None:
         m = re.search(r"\b(\d{1,2})\s+([а-яё]+)(?:\s+(\d{4}))?\b", s)
         if m:
@@ -145,16 +169,13 @@ def _parse_when_ru(text: str, tz_name: str) -> datetime | None:
 
 
 # ==================== интенты Телемоста (триггер: слово "телемост") ====================
-
 def handle_telemost_intents(tm: TelemostClient, text: str) -> str | None:
     original = text or ""
     t = original.lower().strip()
 
-    # реагируем только если есть слово "телемост"
     if not re.search(r"\bтелемост\w*\b", t):
         return None
 
-    # список встреч
     if re.search(r"\b(список|мои|покажи)\s+встреч", t):
         items = tm.list_meetings()
         if not items:
@@ -173,21 +194,18 @@ def handle_telemost_intents(tm: TelemostClient, text: str) -> str | None:
             lines.append(f"{i}. {m.get('title') or 'Без темы'} • ID: {m.get('id')} • {when}")
         return "🗓️ Ближайшие встречи (Телемост):\n" + "\n".join(lines)
 
-    # удалить все
     if re.search(r"(отмени|удали)\s+все\s+встреч", t):
         items = tm.list_meetings()
         for m in items:
             tm.delete_meeting(m["id"])
         return f"🗑️ В Телемосте удалено {len(items)} встреч."
 
-    # удалить по ID
     m = re.search(r"(отмени|удали)\s+встреч[ауые]?\s+([a-z0-9\-]{6,})", t)
     if m:
         cid = m.group(2)
         tm.delete_meeting(cid)
         return f"🗑️ Встреча Телемоста **{cid}** отменена."
 
-    # создать встречу
     if re.search(r"\b(создай|создать|сделай|запланируй)\b.*\bвстреч", t):
         when = _parse_when_ru(original, tm.tz) or datetime.now(pytz.timezone(tm.tz)).replace(minute=0, second=0, microsecond=0)
         topic = _extract_topic(original) or "Встреча"

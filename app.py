@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, send_from_directory
 import os
 import requests
 from datetime import datetime
+import pytz
 
 # ----- Zoom -----
 from zoom_client import ZoomClient, handle_zoom_intents
@@ -34,20 +35,24 @@ if all([ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET, ZOOM_HOST_EMAIL]):
             host_email=ZOOM_HOST_EMAIL,
             tz=ZOOM_TZ,
         )
+        print("[Zoom] Client initialized")
     except Exception as e:
         print(f"[Zoom] Failed to init ZoomClient: {e}")
+else:
+    print("[Zoom] Skipped init (missing creds)")
 
 # ===== Инициализация Яндекс Телемоста (мягко) =====
 telemost = None
 YANDEX_OAUTH_TOKEN = os.getenv("YANDEX_OAUTH_TOKEN")
-YANDEX_ORG_ID      = os.getenv("YANDEX_ORG_ID")  # обязателен для Telemost API
+YANDEX_CLIENT_ID   = os.getenv("YANDEX_CLIENT_ID")
+YANDEX_CLIENT_SECRET = os.getenv("YANDEX_CLIENT_SECRET")
 
 try:
-    if YANDEX_OAUTH_TOKEN and YANDEX_ORG_ID:
+    if YANDEX_OAUTH_TOKEN or (YANDEX_CLIENT_ID and YANDEX_CLIENT_SECRET):
         telemost = TelemostClient(tz=ZOOM_TZ)
+        print("[Telemost] Client initialized")
     else:
-        print(f"[Telemost] Skipped init. YANDEX_OAUTH_TOKEN set: {bool(YANDEX_OAUTH_TOKEN)}, "
-              f"YANDEX_ORG_ID set: {bool(YANDEX_ORG_ID)}")
+        print("[Telemost] Skipped init: no YANDEX_OAUTH_TOKEN and no YANDEX_CLIENT_ID/SECRET")
 except Exception as e:
     print(f"[Telemost] Failed to init TelemostClient: {e}")
 
@@ -72,11 +77,30 @@ def debug_zoom():
 
 @app.get("/debug/telemost")
 def debug_telemost():
+    """
+    У Telemost нет публичной ручки "список встреч", поэтому для проверки
+    аккуратно создаём комнату и сразу удаляем её.
+    """
     if not telemost:
         return {"ok": False, "error": "Telemost not configured"}, 400
     try:
-        items = telemost.list_meetings()
-        return {"ok": True, "count": len(items)}
+        room = telemost.create_meeting()
+        rid = room.get("id")
+        join_url = room.get("join_url", "—")
+        # Пытаемся удалить; если не получится — всё равно покажем создание
+        deleted = False
+        try:
+            if rid:
+                telemost.delete_meeting(rid)
+                deleted = True
+        except Exception:
+            pass
+        return {
+            "ok": True,
+            "created_id": rid,
+            "join_url": join_url,
+            "deleted": deleted
+        }
     except Exception as e:
         return {"ok": False, "error": str(e)}, 500
 
@@ -94,6 +118,7 @@ def chat():
             if tm_reply:
                 return jsonify({"reply": tm_reply})
         except Exception as e:
+            # не роняем чат — просто текстом
             return jsonify({"reply": f"❌ Telemost: {e}"}), 200
 
     # 2) Zoom — реагирует только при словах zoom/зум/зуме/зума
@@ -106,9 +131,10 @@ def chat():
             return jsonify({"reply": f"❌ Zoom: {e}"}), 200
 
     # 3) Простая утилита: текущее время
-    if "время" in msg.lower() or "дата" in msg.lower():
-        now = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
-        return jsonify({"reply": f"Сейчас {now} по системному времени сервера ⏰"})
+    low = msg.lower()
+    if "время" in low or "дата" in low:
+        now = datetime.now(pytz.timezone(ZOOM_TZ)).strftime("%d.%m.%Y %H:%M:%S")
+        return jsonify({"reply": f"Сейчас {now} ({ZOOM_TZ}) ⏰"})
 
     # 4) Ответ через LLM
     headers = {
@@ -136,4 +162,5 @@ def chat():
 
 
 if __name__ == "__main__":
+    # host=0.0.0.0 чтобы было видно из Docker/Portainer
     app.run(host="0.0.0.0", port=8080)

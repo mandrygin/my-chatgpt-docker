@@ -119,10 +119,10 @@ class TelemostClient:
         return self._load_store()
 
     def get_local_record(self, conf_id: str) -> dict | None:
-    for it in self._list_records():
-        if str(it.get("id")) == str(conf_id):
-            return it
-    return None
+        for it in self._list_records():
+            if str(it.get("id")) == str(conf_id):
+                return it
+        return None
     
     # ---------- API ----------
     def create_meeting(self,
@@ -422,25 +422,25 @@ def handle_telemost_intents(tm: TelemostClient, text: str) -> str | None:
 
     # создать
     if re.search(r"\b(создай|создать|сделай|запланируй)\b.*\b(встреч|комнат|конференц|созвон)", t):
-    when = _parse_when_ru(original, tm.tz)
-    topic = _extract_topic(original) or "Встреча"
-    data = tm.create_meeting(topic=topic, when_dt=when, duration_min=60)
-    link = data.get("join_url") or (data.get("links") or {}).get("join") or "—"
+        when = _parse_when_ru(original, tm.tz)
+        topic = _extract_topic(original) or "Встреча"
+        data = tm.create_meeting(topic=topic, when_dt=when, duration_min=60)
+        link = data.get("join_url") or (data.get("links") or {}).get("join") or "—"
 
-    when_str = ""
-    if when:
-        when_str = " на " + when.astimezone(pytz.timezone(tm.tz)).strftime("%d.%m.%Y %H:%M")
+        when_str = ""
+        if when:
+            when_str = " на " + when.astimezone(pytz.timezone(tm.tz)).strftime("%d.%m.%Y %H:%M")
 
-    ics_line = ""
-    if when:
-        base = os.getenv("APP_URL", "http://localhost:8080")
-        ics_url = f"{base}/telemost/{data.get('id')}.ics"
-        ics_line = f"\n📅 Добавить в календарь: <a href=\"{ics_url}\" target=\"_blank\">скачать .ics</a>"
+        ics_line = ""
+        if when:
+            base = os.getenv("APP_URL", "http://localhost:8080")
+            ics_url = f"{base}/telemost/{data.get('id')}.ics"
+            ics_line = f"\n📅 Добавить в календарь: <a href=\"{ics_url}\" target=\"_blank\">скачать .ics</a>"
 
-    return (
-        f"✅ Создал встречу в Телемосте: «{topic}»{when_str} ({tm.tz}).\n"
-        f"Ссылка: <a href=\"{link}\" target=\"_blank\">{link}</a>\n"
-        f"ID: {data.get('id')}{ics_line}"
-    )
+        return (
+            f"✅ Создал встречу в Телемосте: «{topic}»{when_str} ({tm.tz}).\n"
+            f"Ссылка: <a href=\"{link}\" target=\"_blank\">{link}</a>\n"
+            f"ID: {data.get('id')}{ics_line}"
+        )   
 
     return None

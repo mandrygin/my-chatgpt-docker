@@ -10,17 +10,13 @@ from datetime import datetime, timedelta
 class TelemostClient:
     """
     Клиент к Яндекс Телемост API.
-    Мы добавили локальное хранилище (JSON), чтобы уметь:
-      - хранить тему/время встречи,
-      - показывать список встреч,
-      - удалять все/по ID.
-    Сам Telemost этих полей не хранит, поэтому список "локальный".
+    Плюс локальное хранилище (JSON), чтобы держать тему/время и список встреч.
     """
 
     API_BASE = "https://cloud-api.yandex.net/v1/telemost-api"
     TOKEN_URL = "https://oauth.yandex.ru/token"
 
-    def __init__(self, tz: str = "Europe/Moscow", store_path: str | None = None):
+    def __init__(self, tz: str = "Europe/Moscow", store_path: str | None = None, calendar=None):
         self.tz = tz
         self.session = requests.Session()
 
@@ -36,6 +32,9 @@ class TelemostClient:
 
         # 4) локальное хранилище (JSON)
         self.store_path = store_path or os.getenv("TELEMOST_STORE", "/app/telemost_store.json")
+
+        # 5) календарь (CalDAV) — может быть None
+        self.calendar = calendar
 
         if not self._static_token and not (self.client_id and self.client_secret):
             raise ValueError(
@@ -75,7 +74,7 @@ class TelemostClient:
             "Content-Type": "application/json",
         }
         if self.org_id:
-            # если вашему API нужен спец-заголовок организации — раскомментируйте и подставьте корректное имя
+            # пример: если потребуется заголовок организации
             # h["X-Org-ID"] = self.org_id
             pass
         return h
@@ -98,14 +97,12 @@ class TelemostClient:
 
     def _append_record(self, rec: dict):
         items = self._load_store()
-        # если такой id уже есть — заменим
         items = [x for x in items if str(x.get("id")) != str(rec.get("id"))]
         items.append(rec)
-        # сортируем по start_time (пустые в конец)
         def keyfn(x):
             st = x.get("start_time")
             if not st:
-                return ("~",)  # в конец
+                return ("~",)
             return (st,)
         items.sort(key=keyfn)
         self._save_store(items)
@@ -123,7 +120,7 @@ class TelemostClient:
             if str(it.get("id")) == str(conf_id):
                 return it
         return None
-    
+
     # ---------- API ----------
     def create_meeting(self,
                        topic: str | None = None,
@@ -133,7 +130,7 @@ class TelemostClient:
         """
         Telemost не хранит тему/дату, поэтому:
           - создаём комнату на стороне API,
-          - сохраняем ЛОКАЛЬНО (topic/when/duration) в JSON.
+          - сохраняем локально (topic/when/duration) в JSON.
         """
         payload = {"waiting_room_level": waiting_room_level}
         r = self.session.post(
@@ -145,7 +142,6 @@ class TelemostClient:
         r.raise_for_status()
         data = r.json()
 
-        # дополним объект полезной локальной метой
         tz = pytz.timezone(self.tz)
         start_iso = when_dt.astimezone(tz).isoformat() if (when_dt and when_dt.tzinfo) else (
             tz.localize(when_dt).isoformat() if when_dt else None
@@ -154,13 +150,13 @@ class TelemostClient:
             "id": data.get("id"),
             "join_url": data.get("join_url") or (data.get("links") or {}).get("join"),
             "topic": topic or "Встреча",
-            "start_time": start_iso,     # локальная дата/время (в вашей TZ)
+            "start_time": start_iso,
             "duration": duration_min,
             "tz": self.tz,
             "created_at": datetime.now(tz).isoformat(),
         }
         self._append_record(rec)
-        # вернём объединённый ответ
+
         out = dict(data)
         out.update({"topic": rec["topic"], "start_time": rec["start_time"], "duration": duration_min, "tz": self.tz})
         return out
@@ -173,7 +169,6 @@ class TelemostClient:
         )
         r.raise_for_status()
         data = r.json()
-        # приклеим локальную мету, если есть
         for it in self._list_records():
             if str(it.get("id")) == str(conf_id):
                 data.update({k: it.get(k) for k in ("topic", "start_time", "duration", "tz")})
@@ -192,10 +187,6 @@ class TelemostClient:
         return True
 
     def list_meetings(self, upcoming_only: bool = True, limit: int = 20) -> list[dict]:
-        """
-        Возвращает список из ЛОКАЛЬНОГО хранилища, отсортированный по времени.
-        Если у записи нет start_time — показываем её в конце.
-        """
         items = self._list_records()
         tz = pytz.timezone(self.tz)
         now = datetime.now(tz)
@@ -211,11 +202,9 @@ class TelemostClient:
             st = it.get("start_time")
             dt = parse_local_iso(st) if st else None
             if upcoming_only and dt and dt < now:
-                # прошедшие — пропустим
                 continue
             out.append(it)
 
-        # сортировка: сначала по start_time (None в конец)
         def keyfn(x):
             st = x.get("start_time")
             return (st is None, st or "")
@@ -223,7 +212,7 @@ class TelemostClient:
         return out[:limit]
 
 
-# ---------------- ВСПОМОГАТЕЛЬНОЕ (парсинг даты/времени и форматирование) ----------------
+# ---------------- ВСПОМОГАТЕЛЬНОЕ ----------------
 
 def _fmt_tm_meetings(items: list[dict], tz_name: str) -> str:
     if not items:
@@ -237,7 +226,7 @@ def _fmt_tm_meetings(items: list[dict], tz_name: str) -> str:
         st = m.get("start_time")
         if st:
             try:
-                dt = datetime.fromisoformat(st).astimezone(tz)  # st уже локальный в нашей TZ
+                dt = datetime.fromisoformat(st).astimezone(tz)
                 when = dt.strftime("%d.%m.%Y %H:%M")
             except Exception:
                 pass
@@ -306,17 +295,10 @@ def _extract_topic(text: str) -> str | None:
     return None
 
 def _parse_when_ru(text: str, tz_name: str) -> datetime | None:
-    """
-    Детерминированный парсер (как в zoom_client).
-      - есть дата и время → склеиваем
-      - есть только дата → 10:00
-      - есть только время → сегодня/завтра
-    """
     s = (text or "")
-    # нормализация
     s = s.replace("\u202f", " ").replace("\u00a0", " ").replace("\u2009", " ")
-    s = re.sub(r"\b(\d{1,2})[\s\.\-:](\d{2})\b", r"\1:\2", s)  # 17 00 → 17:00
-    s = re.sub(r"\b(\d{1,2})\s*ч\b", r"\1:00", s)             # 14ч → 14:00
+    s = re.sub(r"\b(\d{1,2})[\s\.\-:](\d{2})\b", r"\1:\2", s)
+    s = re.sub(r"\b(\d{1,2})\s*ч\b", r"\1:00", s)
     s_low = s.lower()
 
     tz = pytz.timezone(tz_name)
@@ -382,10 +364,6 @@ def _parse_when_ru(text: str, tz_name: str) -> datetime | None:
 # ---------------- ИНТЕНТЫ ----------------
 
 def handle_telemost_intents(tm: TelemostClient, text: str) -> str | None:
-    """
-    Интенты для Телемоста "как в Zoom", но с локальным списком.
-    Триггер — наличие слова 'телемост'.
-    """
     original = text or ""
     t = original.lower().strip()
 
@@ -397,7 +375,7 @@ def handle_telemost_intents(tm: TelemostClient, text: str) -> str | None:
         items = tm.list_meetings(upcoming_only=True, limit=20)
         return _fmt_tm_meetings(items, tm.tz)
 
-    # удалить все (локальный список + реальные комнаты)
+    # удалить все
     if re.search(r"(отмени|удали)\s+все\s+встреч", t):
         items = tm.list_meetings(upcoming_only=False, limit=9999)
         if not items:
@@ -409,7 +387,6 @@ def handle_telemost_intents(tm: TelemostClient, text: str) -> str | None:
                 tm.delete_meeting(str(mid))
                 cnt += 1
             except Exception:
-                # продолжаем удалять остальные
                 pass
         return f"🗑️ Удалено {cnt} встреч."
 
@@ -420,27 +397,44 @@ def handle_telemost_intents(tm: TelemostClient, text: str) -> str | None:
         tm.delete_meeting(cid)
         return f"🗑️ Встреча Телемоста **{cid}** отменена."
 
-    # создать
+    # создать встречу
     if re.search(r"\b(создай|создать|сделай|запланируй)\b.*\b(встреч|комнат|конференц|созвон)", t):
         when = _parse_when_ru(original, tm.tz)
         topic = _extract_topic(original) or "Встреча"
         data = tm.create_meeting(topic=topic, when_dt=when, duration_min=60)
         link = data.get("join_url") or (data.get("links") or {}).get("join") or "—"
 
-        when_str = ""
-        if when:
-            when_str = " на " + when.astimezone(pytz.timezone(tm.tz)).strftime("%d.%m.%Y %H:%M")
+        # создаём событие в календаре (если он подключён и время распознано)
+        cal_msg = ""
+        if when and tm.calendar:
+            try:
+                tm.calendar.create_event(
+                    summary=topic,
+                    start_dt=when,
+                    duration_min=60,
+                    description=f"Ссылка для подключения: {link}",
+                    url=link,
+                    attendees=None
+                )
+                cal_msg = "\n📆 Событие создано в Яндекс.Календаре."
+            except Exception as e:
+                cal_msg = f"\n⚠️ Не удалось добавить в календарь: {e}"
 
+        # на всякий случай оставим .ics ссылку (можно импортировать вручную)
         ics_line = ""
         if when:
             base = os.getenv("APP_URL", "http://localhost:8080")
             ics_url = f"{base}/telemost/{data.get('id')}.ics"
-            ics_line = f"\n📅 Добавить в календарь: <a href=\"{ics_url}\" target=\"_blank\">скачать .ics</a>"
+            ics_line = f'\n📅 Добавить в календарь: <a href="{ics_url}" target="_blank">скачать .ics</a>'
+
+        when_str = ""
+        if when:
+            when_str = " на " + when.astimezone(pytz.timezone(tm.tz)).strftime("%d.%m.%Y %H:%M")
 
         return (
             f"✅ Создал встречу в Телемосте: «{topic}»{when_str} ({tm.tz}).\n"
-            f"Ссылка: <a href=\"{link}\" target=\"_blank\">{link}</a>\n"
-            f"ID: {data.get('id')}{ics_line}"
-        )   
+            f'Ссылка: <a href="{link}" target="_blank">{link}</a>\n'
+            f"ID: {data.get('id')}{cal_msg}{ics_line}"
+        )
 
     return None

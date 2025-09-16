@@ -1,17 +1,18 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, Response
 import os
 import requests
 from datetime import datetime, timedelta
-from flask import Response
 import pytz
 
-for k in ("HTTP_PROXY","HTTPS_PROXY","http_proxy","https_proxy","ALL_PROXY","all_proxy"):
-    os.environ.pop(k, None)
-
+from yandex_calendar import YaCalClient  # календарь (CalDAV)
 # ----- Zoom -----
 from zoom_client import ZoomClient, handle_zoom_intents
 # ----- Telemost -----
 from telemost_client import TelemostClient, handle_telemost_intents
+
+# вычищаем прокси-переменные, чтобы не мешали локальным запросам
+for k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy"):
+    os.environ.pop(k, None)
 
 # ===== Настройки LLM (через OpenRouter) =====
 API_KEY  = os.environ.get("OPENAI_API_KEY", "")
@@ -45,15 +46,23 @@ if all([ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET, ZOOM_HOST_EMAIL]):
 else:
     print("[Zoom] Skipped init (missing creds)")
 
+# ===== Инициализация Яндекс Календаря (CalDAV, мягко) =====
+ycal = YaCalClient.from_env(tz=ZOOM_TZ)
+if ycal:
+    print("[Calendar] CalDAV client initialized")
+else:
+    print("[Calendar] Skipped init (no YXCAL_USER/PASSWORD)")
+
 # ===== Инициализация Яндекс Телемоста (мягко) =====
 telemost = None
-YANDEX_OAUTH_TOKEN = os.getenv("YANDEX_OAUTH_TOKEN")
-YANDEX_CLIENT_ID   = os.getenv("YANDEX_CLIENT_ID")
+YANDEX_OAUTH_TOKEN   = os.getenv("YANDEX_OAUTH_TOKEN")
+YANDEX_CLIENT_ID     = os.getenv("YANDEX_CLIENT_ID")
 YANDEX_CLIENT_SECRET = os.getenv("YANDEX_CLIENT_SECRET")
 
 try:
     if YANDEX_OAUTH_TOKEN or (YANDEX_CLIENT_ID and YANDEX_CLIENT_SECRET):
-        telemost = TelemostClient(tz=ZOOM_TZ)
+        # ВАЖНО: передаём календарь в клиент Телемоста
+        telemost = TelemostClient(tz=ZOOM_TZ, calendar=ycal)
         print("[Telemost] Client initialized")
     else:
         print("[Telemost] Skipped init: no YANDEX_OAUTH_TOKEN and no YANDEX_CLIENT_ID/SECRET")
@@ -99,12 +108,7 @@ def debug_telemost():
                 deleted = True
         except Exception:
             pass
-        return {
-            "ok": True,
-            "created_id": rid,
-            "join_url": join_url,
-            "deleted": deleted
-        }
+        return {"ok": True, "created_id": rid, "join_url": join_url, "deleted": deleted}
     except Exception as e:
         return {"ok": False, "error": str(e)}, 500
 
@@ -115,17 +119,16 @@ def chat():
     if not msg:
         return jsonify({"error": "empty"}), 400
 
-    # 1) Телемост — реагирует только при слове "телемост"
+    # 1) Telemost: реагируем только, если текст явно про телемост
     if telemost:
         try:
             tm_reply = handle_telemost_intents(telemost, msg)
             if tm_reply:
                 return jsonify({"reply": tm_reply})
         except Exception as e:
-            # не роняем чат — просто текстом
             return jsonify({"reply": f"❌ Telemost: {e}"}), 200
 
-    # 2) Zoom — реагирует только при словах zoom/зум/зуме/зума
+    # 2) Zoom: реагируем на zoom/зум…
     if zoom:
         try:
             zoom_reply = handle_zoom_intents(zoom, msg)
@@ -164,6 +167,7 @@ def chat():
     reply = ((data.get("choices") or [{}])[0].get("message", {}).get("content", "")) or "…"
     return jsonify({"reply": reply})
 
+# ===== Единичный .ICS для конкретной комнаты (по локальному времени из store) =====
 @app.get("/telemost/<conf_id>.ics")
 def telemost_ics(conf_id):
     if not telemost:
@@ -206,7 +210,6 @@ END:VCALENDAR
         mimetype="text/calendar",
         headers={"Content-Disposition": f'attachment; filename="telemost_{conf_id}.ics"'}
     )
-
 
 if __name__ == "__main__":
     # host=0.0.0.0 чтобы было видно из Docker/Portainer

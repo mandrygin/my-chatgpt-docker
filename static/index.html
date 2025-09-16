@@ -7,6 +7,7 @@
   <title>Assistent ISE</title>
   <link rel="stylesheet" href="style.css">
   <!-- MathJax конфигурация -->
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
   <script>
     window.MathJax = {
       tex: {
@@ -51,13 +52,24 @@
   const input = document.getElementById('msg');
   const sendBtn = document.getElementById('send');
 
-  function addMessage(html, who='user') {
-    const row = document.createElement('div');
-    row.className = 'row ' + (who === 'user' ? 'user' : 'bot');
+function addMessage(html, who='user') {
+  const row = document.createElement('div');
+  row.className = 'row ' + (who === 'user' ? 'user' : 'bot');
 
-    const bub = document.createElement('div');
-    bub.className = 'bubble ' + (who === 'user' ? 'user' : 'bot');
-    bub.innerHTML = html;
+  const bub = document.createElement('div');
+  bub.className = 'bubble ' + (who === 'user' ? 'user' : 'bot');
+
+  if (who === 'user') {
+    // Безопасно вставляем как текст
+    bub.textContent = html;
+  } else {
+    // Ответ бота пропускаем через фильтр
+    const clean = DOMPurify.sanitize(html, {
+      ALLOWED_TAGS: ['b','i','strong','em','a','code','pre','p','br'],
+      ALLOWED_ATTR: ['href','title','target']
+    });
+    bub.innerHTML = clean;
+  }
 
     // --- добавляем время ---
     const time = document.createElement('div');

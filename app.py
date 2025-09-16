@@ -1,7 +1,8 @@
 from flask import Flask, request, jsonify, send_from_directory
 import os
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
+from flask import Response
 import pytz
 
 for k in ("HTTP_PROXY","HTTPS_PROXY","http_proxy","https_proxy","ALL_PROXY","all_proxy"):
@@ -162,6 +163,49 @@ def chat():
     data = r.json()
     reply = ((data.get("choices") or [{}])[0].get("message", {}).get("content", "")) or "…"
     return jsonify({"reply": reply})
+
+@app.get("/telemost/<conf_id>.ics")
+def telemost_ics(conf_id):
+    if not telemost:
+        return "Telemost not configured", 404
+
+    rec = telemost.get_local_record(conf_id) if hasattr(telemost, "get_local_record") else None
+    if not rec or not rec.get("start_time"):
+        return "Встреча не найдена или у неё не задано время", 404
+
+    tz = pytz.timezone(telemost.tz)
+    start = datetime.fromisoformat(rec["start_time"])   # уже локальная дата
+    duration = int(rec.get("duration", 60))
+    end = start + timedelta(minutes=duration)
+
+    def fmt_utc(dt):
+        import pytz as _p
+        return dt.astimezone(_p.utc).strftime("%Y%m%dT%H%M%SZ")
+
+    link = rec.get("join_url") or ""
+    topic = rec.get("topic") or "Встреча"
+    uid = f"{conf_id}@help-gpt"
+
+    ics = f"""BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//ISE//help-gpt//RU
+METHOD:PUBLISH
+BEGIN:VEVENT
+UID:{uid}
+DTSTAMP:{fmt_utc(datetime.now(pytz.utc))}
+DTSTART:{fmt_utc(start)}
+DTEND:{fmt_utc(end)}
+SUMMARY:{topic}
+DESCRIPTION:Ссылка для подключения: {link}
+URL:{link}
+END:VEVENT
+END:VCALENDAR
+"""
+    return Response(
+        ics,
+        mimetype="text/calendar",
+        headers={"Content-Disposition": f'attachment; filename="telemost_{conf_id}.ics"'}
+    )
 
 
 if __name__ == "__main__":

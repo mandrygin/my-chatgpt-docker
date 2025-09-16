@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
 COPY zoom_client.py .
 COPY telemost_client.py .
-COPY yandex_calendar.py .     # <-- ДОБАВЬ ЭТУ СТРОКУ
+COPY yandex_calendar.py .
 COPY static ./static
 
 ENV PYTHONUNBUFFERED=1

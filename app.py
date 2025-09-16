@@ -46,16 +46,12 @@ if all([ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET, ZOOM_HOST_EMAIL]):
 else:
     print("[Zoom] Skipped init (missing creds)")
 
-# ===== Инициализация Яндекс Календаря (CalDAV, мягко) =====
-try:
-    ycal = YaCalClient.from_env(tz=ZOOM_TZ)
-    if ycal:
-        print("[Calendar] CalDAV client initialized")
-    else:
-        print("[Calendar] Skipped init (no YXCAL_USER/PASSWORD)")
-except Exception as e:
-    ycal = None
-    print(f"[Calendar] Disabled: {e}")
+# ===== Инициализация Яндекс Календаря (мягко через CalDAV) =====
+ycal = YaCalClient.from_env(tz=ZOOM_TZ)
+if ycal:
+    print("[Calendar] CalDAV client initialized")
+else:
+    print("[Calendar] Skipped init (no YXCAL_USER/PASSWORD)")
 
 # ===== Инициализация Яндекс Телемоста (мягко) =====
 telemost = None

@@ -23,6 +23,12 @@ services:
       ZOOM_HOST_EMAIL: "${ZOOM_HOST_EMAIL}"
       ZOOM_TZ: "${ZOOM_TZ:-Europe/Moscow}"
 
+      # === Yandex Calendar (CalDAV) ===
+      YXCAL_URL: "https://caldav.yandex.ru"
+      YXCAL_USER: "api-bot@your-domain.ru"   # почта бота
+      YXCAL_PASSWORD: "пароль_приложения"    # из настроек безопасности
+      YXCAL_CALENDAR_NAME: "Ассистент"       # (опционально) имя календаря
+
       # === Telemost (ВАЖНО) ===
       YANDEX_OAUTH_TOKEN: "${YANDEX_OAUTH_TOKEN}"   # <— твой y0_... токен
       YANDEX_ORG_ID: "${YANDEX_ORG_ID}"

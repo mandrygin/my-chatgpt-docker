@@ -169,7 +169,7 @@ def handle_telemost_intents(tm: TelemostClient, text: str) -> str | None:
 # создать встречу/комнату/конференцию
 if re.search(r"\b(создай|создать|сделай|запланируй)\b.*\b(встреч|комнат|конференц|созвон)", t):
     topic = _extract_topic(original) or "Встреча"
-    data = tm.create_meeting()
+    data = tm.create_meeting()  # создаём комнату
     link = data.get("join_url") or (data.get("links") or {}).get("join") or "—"
     return (
         f"✅ Создал встречу в Телемосте: «{topic}».\n"

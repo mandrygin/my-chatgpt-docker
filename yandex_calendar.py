@@ -35,11 +35,11 @@ class YaCalClient:
             raise RuntimeError("CalDAV: у пользователя нет календарей")
         if self.calendar_name:
             for c in cals:
-                if (c.get_properties([("DAV:", "displayname")]).get(("DAV:", "displayname")) or "").strip() == self.calendar_name:
+                disp = c.get_properties([("DAV:", "displayname")]).get(("DAV:", "displayname"))
+                if (disp or "").strip() == self.calendar_name:
                     self._calendar = c
                     break
             if self._calendar is None:
-                # не нашли по имени — берём первый
                 self._calendar = cals[0]
         else:
             self._calendar = cals[0]
@@ -47,10 +47,7 @@ class YaCalClient:
     def create_event(self, summary: str, start_dt: datetime,
                      duration_min: int = 60, description: str | None = None,
                      url: str | None = None, attendees: list[str] | None = None):
-        """
-        Создаёт VEVENT в выбранном календаре.
-        start_dt — локальное время (с TZ или naive); мы проставим TZ.
-        """
+        """Создаёт событие в календаре."""
         self._ensure_calendar()
         tz = pytz.timezone(self.tz)
         if start_dt.tzinfo is None:
@@ -70,7 +67,6 @@ class YaCalClient:
         if url:
             ev.add("url", url)
 
-        # Участники (опционально)
         if attendees:
             for a in attendees:
                 addr = vCalAddress(f"MAILTO:{a}")
